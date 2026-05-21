@@ -30,10 +30,10 @@ router.get('/tickets/stats', verifyToken, filterByEmpCode, getTicketStats);
 // CREATE new ticket (any authenticated user)
 router.post('/tickets', verifyToken, filterByEmpCode, createTicket);
 
-// UPDATE ticket (IT Staff only - CC 7510)
-router.put('/tickets/:ticketId', verifyToken, filterByEmpCode, checkCC7510, updateTicket);
+// UPDATE ticket
+router.put('/tickets/:ticketId', verifyToken, filterByEmpCode, updateTicket);
 
-// DELETE ticket (IT Staff only - CC 7510)
-router.delete('/tickets/:ticketId', verifyToken, filterByEmpCode, checkCC7510, deleteTicket);
+// DELETE ticket (ticket owner or IT Staff)
+router.delete('/tickets/:ticketId', verifyToken, filterByEmpCode, deleteTicket);
 
 export default router;

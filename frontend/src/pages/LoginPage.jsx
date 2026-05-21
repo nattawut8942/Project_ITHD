@@ -10,6 +10,8 @@ const LoginPage = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [username, setUsername] = useState('');
+    const [empPicUrl, setEmpPicUrl] = useState(null);
     const { setAuthToken } = useAuth(); // ✅ Use updated function
     const navigate = useNavigate();
 
@@ -57,6 +59,15 @@ const LoginPage = () => {
                         alt="DAIKIN Logo"
                         className="h-12 mx-auto mb-5 object-contain"
                     />
+                    {/* Employee picture preview (loads when username entered) */}
+                    {empPicUrl ? (
+                        <img
+                            src={empPicUrl}
+                            alt="Employee"
+                            className="h-20 w-20 rounded-full mx-auto mb-4 object-cover border border-slate-100"
+                            onError={() => setEmpPicUrl(null)}
+                        />
+                    ) : null}
                     <h2 className="text-3xl font-black tracking-tight text-slate-950 leading-none">IT HELP DESK</h2>
                     <p className="text-lg font-bold text-indigo-600 mt-2 tracking-wide">SERVICE PORTAL</p>
                 </div>
@@ -70,14 +81,26 @@ const LoginPage = () => {
                             <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-400">
                                 <User size={18} />
                             </span>
-                            <input
-                                name="username"
-                                placeholder="Enter your username"
-                                autoComplete="username"
-                                autoFocus
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 pl-11 pr-4 outline-none focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-50 transition-all text-sm text-slate-900 placeholder:text-slate-400"
-                                required
-                            />
+                                <input
+                                    name="username"
+                                    value={username}
+                                    onChange={(e) => {
+                                        const v = e.target.value;
+                                        setUsername(v);
+                                        const trimmed = v.trim();
+                                        // Construct EmpPic URL only when trimmed value exists
+                                        if (trimmed) {
+                                            setEmpPicUrl(`http://dcidmc.dci.daikin.co.jp/PICTURE/${trimmed}.jpg`);
+                                        } else {
+                                            setEmpPicUrl(null);
+                                        }
+                                    }}
+                                    placeholder="Enter your username"
+                                    autoComplete="username"
+                                    autoFocus
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 pl-11 pr-4 outline-none focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-50 transition-all text-sm text-slate-900 placeholder:text-slate-400"
+                                    required
+                                />
                         </div>
                     </div>
                     

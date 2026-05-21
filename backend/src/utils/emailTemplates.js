@@ -34,7 +34,7 @@ export const ticketCreatedTemplate = (ticket, userName) => {
                                 <td>${ticket.request_type}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Project:</strong></td>
+                                <td style="padding: 5px; color: #666;"><strong>Problem:</strong></td>
                                 <td>${ticket.project_name}</td>
                             </tr>
                             <tr>
@@ -120,7 +120,7 @@ export const ticketUpdatedTemplate = (ticket, userName, changeDetails) => {
                                 <td>${ticket.req_id}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Project:</strong></td>
+                                <td style="padding: 5px; color: #666;"><strong>Problem:</strong></td>
                                 <td>${ticket.project_name}</td>
                             </tr>
                             <tr>
@@ -168,6 +168,43 @@ export const ticketUpdatedTemplate = (ticket, userName, changeDetails) => {
 };
 
 /**
+ * Template: Ticket Comment Added
+ * Sent to: Requester when IT staff comments on the ticket
+ */
+export const ticketCommentTemplate = (ticket, author, comment) => {
+    return {
+        subject: `[${ticket.req_id}] New Comment on Your Ticket`,
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0;">
+                    <h1 style="margin: 0;">💬 New Comment Added</h1>
+                </div>
+                
+                <div style="background: #f5f5f5; padding: 20px;">
+                    <p>Hi ${ticket.requester_name || 'there'},</p>
+                    <p>${author} has added a comment to your ticket.</p>
+                    <div style="background: white; padding: 15px; border-left: 4px solid #667eea; margin: 20px 0;">
+                        <p><strong>Ticket ID:</strong> ${ticket.req_id}</p>
+                        <p><strong>Problem:</strong> ${ticket.project_name}</p>
+                        <p><strong>Comment:</strong></p>
+                        <div style="background: #f1f5f9; padding: 12px; border-radius: 6px; color: #111; line-height: 1.6;">${comment}</div>
+                    </div>
+                    <p style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; color: #999; font-size: 12px;">
+                        <strong>Reference ID:</strong> ${ticket.req_id}<br>
+                        <strong>Updated:</strong> ${new Date().toLocaleString()}<br>
+                        Do not reply to this email. Use the IT Service Desk portal instead.
+                    </p>
+                </div>
+                <div style="background: #333; color: white; padding: 20px; text-align: center; border-radius: 0 0 8px 8px; font-size: 12px;">
+                    <p style="margin: 0;">IT Service Desk | Daikin Thailand</p>
+                    <p style="margin: 0;">© 2026 All Rights Reserved</p>
+                </div>
+            </div>
+        `
+    };
+};
+
+/**
  * Template: Ticket Assigned to IT Staff
  * Sent to: IT Staff member
  */
@@ -201,7 +238,7 @@ export const ticketAssignedTemplate = (ticket, staffName) => {
                                 <td>${ticket.requester_name}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Project:</strong></td>
+                                <td style="padding: 5px; color: #666;"><strong>Problem:</strong></td>
                                 <td>${ticket.project_name}</td>
                             </tr>
                             <tr>
@@ -272,7 +309,7 @@ export const ticketCompletedTemplate = (ticket, userName) => {
                                 <td>${ticket.req_id}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Project:</strong></td>
+                                <td style="padding: 5px; color: #666;"><strong>Problem:</strong></td>
                                 <td>${ticket.project_name}</td>
                             </tr>
                             <tr>

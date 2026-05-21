@@ -37,7 +37,9 @@ export const login = async (req, res) => {
         const fullName   = apiData.FullName   || '';
         const email      = apiData.Email      || '';
         const empPic     = apiData.EmpPic     || '';
-        const sect       = apiData.SECT_Short || '';
+        const sectShort  = apiData.SECT_Short || '';
+        const sectLong   = apiData.SECT_Long  || '';
+        const sect       = sectLong || sectShort;
         const costCenter = String(apiData.Cost_Center || '').trim();
 
         if (!empCode && !shortName) {
@@ -51,7 +53,7 @@ export const login = async (req, res) => {
             .query('SELECT 1 FROM dbo.Stock_UserRole WHERE EmpCode = @empCode');
 
         const isAdmin = adminCheck.recordset.length > 0;
-        const role = isAdmin ? 'Staff' : 'User';
+        const role = isAdmin ? 'Admin' : 'User';
 
         // ✅ SYNC USER TO DATABASE
         // This creates or updates the user in dbo.Users table
@@ -73,7 +75,9 @@ export const login = async (req, res) => {
                 username, 
                 role, 
                 name: shortName || fullName || username,
-                sect, 
+                sect,
+                sect_short: sectShort,
+                sect_long: sectLong,
                 empcode: empCode, 
                 email: email || `${username}@dci.daikin.co.jp`, 
                 cost_center: costCenter 
@@ -92,6 +96,8 @@ export const login = async (req, res) => {
                 role,
                 name:        shortName || fullName || username,
                 sect,
+                sect_short:  sectShort,
+                sect_long:   sectLong,
                 empcode:     empCode,
                 email:       email || `${username}@dci.daikin.co.jp`,
                 cost_center: costCenter,

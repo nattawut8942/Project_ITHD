@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { LogOut } from 'lucide-react';
+import { Computer, LogOut } from 'lucide-react';
 import { ticketAPI } from '../utils/apiClient';
 
 // --- Inline SVG Icons (Expanded for Modern UI) ---
@@ -26,24 +26,22 @@ export default function ITServiceDesk() {
   const [requests, setRequests] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null); // For Drawer (Slide-over)
+  const [commentModalOpen, setCommentModalOpen] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [commentMode, setCommentMode] = useState('comment');
+  const [pendingAction, setPendingAction] = useState(null);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [notification, setNotification] = useState(null);
-  const [currentView, setCurrentView] = useState('mine'); 
+  const [currentView, setCurrentView] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const [formData, setFormData] = useState({
-    requestType: 'Hardware Setup', projectName: '', targetDate: '', deviceType: 'Laptop (Windows)', deviceCount: 1, location: '', priority: 'Normal', requirements: ''
+    requestType: 'Hardware Setup', projectName: '', targetDate: '', deviceType: 'Notebook (Windows)', deviceCount: 1, location: '', priority: 'Normal', requirements: ''
   });
 
   // Check if user is IT Staff (CC 7510)
   const isITStaff = user?.cost_center === '7510';
-
-  useEffect(() => {
-    // Default view for IT Staff is 'all', others is 'mine'
-    if (isITStaff) {
-      setCurrentView('all');
-    }
-  }, [isITStaff]);
 
   const fetchRequests = async () => {
     setIsLoading(true);
@@ -86,7 +84,7 @@ export default function ITServiceDesk() {
       
       showNotification('Request submitted successfully!', 'success');
       setIsModalOpen(false);
-      setFormData({ requestType: 'Hardware Setup', projectName: '', targetDate: '', deviceType: 'Laptop (Windows)', deviceCount: 1, location: '', priority: 'Normal', requirements: '' });
+      setFormData({ requestType: 'Hardware Setup', projectName: '', targetDate: '', deviceType: 'Notebook (Windows)', deviceCount: 1, location: '', priority: 'Normal', requirements: '' });
       
       // Refresh the list with actual data from DB
       fetchRequests();
@@ -106,14 +104,115 @@ export default function ITServiceDesk() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const openConfirm = ({ title, message, confirmLabel = 'Confirm', onConfirm }) => {
+    setPendingAction({ title, message, confirmLabel, onConfirm });
+  };
+
+  const closeConfirm = () => setPendingAction(null);
+
+  const executePendingAction = async () => {
+    if (!pendingAction?.onConfirm) return;
+    try {
+      await pendingAction.onConfirm();
+    } catch (error) {
+      console.error(error);
+      showNotification('ไม่สามารถดำเนินการได้', 'error');
+    } finally {
+      closeConfirm();
+    }
+  };
+
+  const fetchTicketDetails = async (ticketId) => {
+    setIsDetailLoading(true);
+    try {
+      const response = await ticketAPI.getTicket(ticketId);
+      const ticket = response.data.data || response.data;
+      setSelectedTicket(ticket);
+    } catch (error) {
+      console.error('Fetch detail error:', error);
+      showNotification('Failed to load ticket details', 'error');
+    } finally {
+      setIsDetailLoading(false);
+    }
+  };
+
+  const handleSaveComment = async () => {
+    if (!commentText.trim()) {
+      showNotification('Please enter a comment before saving.', 'error');
+      return;
+    }
+
+    const updatePayload = commentMode === 'reject'
+      ? { status: 'Rejected', comment: commentText }
+      : { comment: commentText };
+
+    try {
+      await ticketAPI.updateTicket(selectedTicket.id, updatePayload);
+      showNotification(commentMode === 'reject' ? 'Ticket rejected with reason' : 'Comment added', 'success');
+      setCommentModalOpen(false);
+      setCommentText('');
+      setCommentMode('comment');
+      await fetchTicketDetails(selectedTicket.id);
+      fetchRequests();
+    } catch (err) {
+      console.error(err);
+      showNotification('Failed to save comment', 'error');
+    }
+  };
+
+  const openCommentModal = (mode = 'comment') => {
+    setCommentMode(mode);
+    setCommentText('');
+    setCommentModalOpen(true);
+  };
+
+  const handleAcceptTicket = async () => {
+    try {
+      await ticketAPI.updateTicket(selectedTicket.id, {
+        status: 'In Progress',
+        empCode_assigned: user?.empcode,
+        notes: (selectedTicket.notes || '') + `\n\n[Action] รับเคสโดย ${user?.name || 'IT Staff'}`
+      });
+      showNotification('รับเคสเรียบร้อย', 'success');
+      setSelectedTicket(null);
+      fetchRequests();
+    } catch (err) {
+      console.error(err);
+      showNotification('ไม่สามารถรับเคสได้', 'error');
+    }
+  };
+
+  const handleCompleteTicket = async () => {
+    try {
+      await ticketAPI.updateTicket(selectedTicket.id, {
+        status: 'Completed',
+        notes: (selectedTicket.notes || '') + `\n\n[Action] ปิดเคสโดย ${user?.name || 'IT Admin'}`
+      });
+      showNotification('ปิดเคสสำเร็จ', 'success');
+      setSelectedTicket(null);
+      fetchRequests();
+    } catch (err) {
+      console.error(err);
+      showNotification('ไม่สามารถปิดเคสได้', 'error');
+    }
+  };
+
+  const handleDeleteTicket = async () => {
+    try {
+      await ticketAPI.deleteTicket(selectedTicket.id);
+      showNotification('Ticket deleted', 'success');
+      setSelectedTicket(null);
+      fetchRequests();
+    } catch (err) {
+      console.error(err);
+      showNotification('Failed to delete ticket', 'error');
+    }
+  };
+
   const filteredRequests = useMemo(() => {
     let result = requests;
-    
-    // If not IT staff, only show their own tickets
-    if (!isITStaff) {
-      result = result.filter(r => r.empCode_created === user?.empcode);
-    } else if (currentView === 'mine') {
-      // If IT staff but viewing 'mine'
+
+    if (currentView === 'mine') {
       result = result.filter(r => r.empCode_created === user?.empcode);
     }
 
@@ -126,12 +225,13 @@ export default function ITServiceDesk() {
       );
     }
     return result;
-  }, [requests, currentView, searchQuery, user?.empcode, isITStaff]);
+  }, [requests, currentView, searchQuery, user?.empcode]);
 
   const stats = {
     total: filteredRequests.length,
     pending: filteredRequests.filter(r => r.status === 'Pending').length,
     completed: filteredRequests.filter(r => r.status === 'Completed').length,
+    rejected: filteredRequests.filter(r => r.status === 'Rejected').length,
   };
 
   const getPriorityStyle = (priority) => {
@@ -147,6 +247,7 @@ export default function ITServiceDesk() {
     switch(status) {
       case 'Completed': return 'text-emerald-700 bg-emerald-50 ring-emerald-600/20';
       case 'In Progress': return 'text-blue-700 bg-blue-50 ring-blue-600/20';
+      case 'Rejected': return 'text-red-700 bg-red-50 ring-red-600/20';
       default: return 'text-amber-700 bg-amber-50 ring-amber-600/20';
     }
   };
@@ -179,32 +280,36 @@ export default function ITServiceDesk() {
       <aside className="w-64 bg-white border-r border-slate-200 p-6 hidden md:flex flex-col z-10">
         <div className="text-2xl font-bold text-slate-900 mb-8 flex items-center gap-2 tracking-tight">
           <div className="bg-indigo-600 p-1.5 rounded-lg text-white">
-            <IconMonitor className="w-6 h-6" />
+            <Computer className="w-6 h-6" />
           </div>
-          IT Service Desk
+          IT Help Desk
         </div>
 
         {/* User Card */}
-        <div className="mb-8 p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold text-lg">
-            {user?.name?.charAt(0) || 'U'}
+        <div className="mb-8 p-4 bg-slate-50 rounded-3xl border border-slate-100 flex flex-col items-center text-center gap-4">
+          <div className="w-20 h-20 rounded-full overflow-hidden bg-indigo-100 flex items-center justify-center border border-slate-200">
+            {user?.empPic ? (
+              <img src={user.empPic} alt={user?.name || 'User'} className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-indigo-700 font-bold text-2xl">{user?.name?.charAt(0) || 'U'}</span>
+            )}
           </div>
-          <div className="text-sm overflow-hidden flex-1">
+          <div className="text-sm w-full">
             <p className="text-slate-900 font-semibold truncate">{user?.name || 'User'}</p>
-            <p className="text-slate-500 text-xs">CC: {user?.cost_center}</p>
-            <p className="text-slate-400 text-xs">{isITStaff ? '👨‍💻 IT Staff' : '👤 User'}</p>
+            <p className="text-slate-500 text-xs mt-1 break-words">{user?.email || 'No email'}</p>
+            <p className="text-slate-500 text-xs mt-2">{user?.sect_long || user?.sect || 'No department'}</p>
+            <p className="text-slate-400 text-xs mt-1">CC: {user?.cost_center || 'N/A'}</p>
+            <p className="text-slate-400 text-xs mt-1">{isITStaff ? '👨‍💻 IT Admin' : '👤 User'}</p>
           </div>
         </div>
 
         <nav className="space-y-1.5 flex-1">
-          {isITStaff && (
-            <button 
-              onClick={() => setCurrentView('all')}
-              className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium text-sm ${currentView === 'all' ? 'text-indigo-700 bg-indigo-50' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}`}
-            >
-              <IconLayoutDashboard className="w-5 h-5" /> Global Feed
-            </button>
-          )}
+          <button 
+            onClick={() => setCurrentView('all')}
+            className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium text-sm ${currentView === 'all' ? 'text-indigo-700 bg-indigo-50' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}`}
+          >
+            <IconLayoutDashboard className="w-5 h-5" /> All Tickets
+          </button>
           <button 
             onClick={() => setCurrentView('mine')}
             className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium text-sm ${currentView === 'mine' ? 'text-indigo-700 bg-indigo-50' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}`}
@@ -233,7 +338,21 @@ export default function ITServiceDesk() {
             </h1>
             <p className="text-sm text-slate-500 mt-1">{isITStaff && currentView === 'all' ? 'IT Staff - View all requests' : 'Showing your submitted tickets'}</p>
           </div>
-          <div className="flex items-center gap-4 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
+            <div className="inline-flex rounded-full bg-slate-100 p-1">
+              <button
+                onClick={() => setCurrentView('all')}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition ${currentView === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
+              >
+                All Tickets
+              </button>
+              <button
+                onClick={() => setCurrentView('mine')}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition ${currentView === 'mine' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
+              >
+                My Tickets
+              </button>
+            </div>
             <div className="relative w-full sm:w-64">
               <IconSearch className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input 
@@ -299,7 +418,7 @@ export default function ITServiceDesk() {
                 filteredRequests.map((req) => (
                   <div 
                     key={req.id} 
-                    onClick={() => setSelectedTicket(req)}
+                    onClick={() => fetchTicketDetails(req.id)}
                     className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50 transition cursor-pointer group"
                   >
                     <div className="flex gap-4 items-start">
@@ -346,8 +465,9 @@ export default function ITServiceDesk() {
       {/* --- SLIDE-OVER DRAWER (TICKET DETAILS) --- */}
       {selectedTicket && (
         <>
-          <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40 transition-opacity" onClick={() => setSelectedTicket(null)}></div>
-          <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white shadow-2xl z-50 flex flex-col transform transition-transform duration-300 ease-in-out border-l border-slate-200 animate-in slide-in-from-right">
+          <div className="fixed inset-0 bg-slate-900/30 z-40 transition-opacity" onClick={() => setSelectedTicket(null)}></div>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl z-50 flex flex-col max-h-[90vh] overflow-hidden border border-slate-200 animate-in zoom-in-95">
             
             {/* Drawer Header */}
             <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-start bg-slate-50/50">
@@ -414,59 +534,206 @@ export default function ITServiceDesk() {
                 </div>
               </div>
 
+              <div className="pt-6 border-t border-slate-100">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm text-slate-900 font-bold">Comments</p>
+                  <button onClick={() => { setCommentModalOpen(true); setCommentText(''); }} className="text-indigo-600 hover:text-indigo-800 text-sm font-medium">Add Comment</button>
+                </div>
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 text-sm text-slate-700">
+                  {selectedTicket.comments && selectedTicket.comments.length > 0 ? (
+                    <div className="space-y-4">
+                      {selectedTicket.comments.map((commentItem) => (
+                        <div key={commentItem.id} className="rounded-2xl border border-slate-100 p-4 bg-slate-50">
+                          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+                            <span>{commentItem.empCode}</span>
+                            <span>{new Date(commentItem.created_at).toLocaleString('en-GB')}</span>
+                          </div>
+                          <p className="text-slate-700 whitespace-pre-line">{commentItem.comment}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-slate-500">No comments yet. Click Add Comment to reply to the requester.</p>
+                  )}
+                </div>
+              </div>
+
               {/* Timeline (Modern Feature) */}
               <div className="pt-6 border-t border-slate-100">
                 <p className="text-sm text-slate-900 mb-4 font-bold">Request Timeline</p>
-                <div className="relative border-l-2 border-slate-100 ml-3 space-y-6">
-                  {selectedTicket.status === 'Pending' ? (
-                     <div className="relative pl-6">
-                        <span className="absolute -left-[9px] top-1 w-4 h-4 rounded-full bg-slate-200 ring-4 ring-white"></span>
-                        <p className="text-sm font-medium text-slate-500">Awaiting IT Assignment</p>
-                     </div>
-                  ) : (
-                     <div className="relative pl-6">
-                        <span className="absolute -left-[9px] top-1 w-4 h-4 rounded-full bg-indigo-500 ring-4 ring-white"></span>
-                        <p className="text-sm font-bold text-slate-900">Assigned to IT Staff</p>
-                     </div>
-                  )}
-                  <div className="relative pl-6">
-                    <span className="absolute -left-[9px] top-1 w-4 h-4 rounded-full bg-slate-300 ring-4 ring-white"></span>
-                    <p className="text-sm font-medium text-slate-900">Ticket Opened</p>
-                    <p className="text-xs text-slate-500 mt-1">{new Date(selectedTicket.created_at).toLocaleString('en-GB')}</p>
-                  </div>
+                <div className="grid grid-cols-1 gap-4">
+                  {[
+                    {
+                      title: 'Ticket Opened',
+                      active: true,
+                      description: new Date(selectedTicket.created_at).toLocaleString('en-GB'),
+                      color: 'bg-slate-300 text-slate-900'
+                    },
+                    {
+                      title: 'Assigned to IT Staff',
+                      active: selectedTicket.status !== 'Pending',
+                      description: selectedTicket.status !== 'Pending' ? 'Ticket has been assigned' : 'Waiting for IT to accept',
+                      color: selectedTicket.status !== 'Pending' ? 'bg-indigo-500 text-white' : 'bg-amber-100 text-amber-700'
+                    },
+                    {
+                      title: 'In Progress',
+                      active: selectedTicket.status === 'In Progress' || selectedTicket.status === 'Completed',
+                      description: selectedTicket.status === 'In Progress' ? 'IT is working on this ticket' : selectedTicket.status === 'Completed' ? 'Work completed' : 'Still pending',
+                      color: selectedTicket.status === 'In Progress' ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500'
+                    },
+                    {
+                      title: selectedTicket.status === 'Rejected' ? 'Rejected' : 'Completed',
+                      active: selectedTicket.status === 'Completed' || selectedTicket.status === 'Rejected',
+                      description: selectedTicket.status === 'Completed' ? 'Ticket has been completed' : selectedTicket.status === 'Rejected' ? 'Ticket has been rejected' : 'Not finished yet',
+                      color: selectedTicket.status === 'Completed' ? 'bg-emerald-500 text-white' : selectedTicket.status === 'Rejected' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-500'
+                    }
+                  ].map((step) => (
+                    <div key={step.title} className="relative pl-6">
+                      <span className={`absolute -left-[9px] top-2 w-4 h-4 rounded-full ring-4 ring-white ${step.active ? step.color : 'bg-slate-200'}`}></span>
+                      <p className={`text-sm font-semibold ${step.active ? 'text-slate-900' : 'text-slate-500'}`}>{step.title}</p>
+                      <p className="text-xs text-slate-500 mt-1">{step.description}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
 
             </div>
             
             {/* Drawer Footer Actions */}
-            <div className="p-4 border-t border-slate-200 bg-slate-50 flex gap-3">
-              <button className="flex-1 py-2.5 bg-white border border-slate-300 text-slate-700 rounded-lg font-medium text-sm hover:bg-slate-50 transition">
+            <div className="p-4 border-t border-slate-200 bg-slate-50 grid gap-3 sm:grid-cols-3">
+              <button onClick={() => openCommentModal('comment')} className="w-full py-2.5 bg-white border border-slate-300 text-slate-700 rounded-lg font-medium text-sm hover:bg-slate-50 transition">
                 Add Comment
               </button>
-              {isITStaff && (
-                <button className="flex-1 py-2.5 bg-slate-900 text-white rounded-lg font-medium text-sm hover:bg-slate-800 transition">
-                  Take Action / Update
+              {isITStaff && selectedTicket?.status !== 'Completed' && selectedTicket?.status !== 'Rejected' && (
+                <button onClick={() => openCommentModal('reject')} className="w-full py-2.5 bg-rose-600 text-white rounded-lg font-medium text-sm hover:bg-rose-700 transition">
+                  Reject Ticket
+                </button>
+              )}
+              {isITStaff && selectedTicket?.status === 'Pending' && (
+                <button onClick={() => openConfirm({
+                  title: 'Confirm รับเคส',
+                  message: `คุณแน่ใจว่าจะรับเคส ${selectedTicket.req_id} นี้หรือไม่? การดำเนินการนี้จะเปลี่ยนสถานะเป็น "กำลังดำเนินการ".`,
+                  confirmLabel: 'รับเคส',
+                  onConfirm: handleAcceptTicket
+                })} className="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-medium text-sm hover:bg-indigo-700 transition">
+                  รับเคส
+                </button>
+              )}
+              {isITStaff && selectedTicket?.status === 'In Progress' && (
+                <button onClick={() => openConfirm({
+                  title: 'Confirm ปิดเคส',
+                  message: `คุณแน่ใจว่าจะปิดเคส ${selectedTicket.req_id} นี้หรือไม่? การดำเนินการนี้จะเปลี่ยนสถานะเป็น "ปิดเคส".`,
+                  confirmLabel: 'ปิดเคส',
+                  onConfirm: handleCompleteTicket
+                })} className="w-full py-2.5 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 transition">
+                  ปิดเคส
+                </button>
+              )}
+              {(isITStaff || selectedTicket?.empCode_created === user?.empcode) && (
+                <button onClick={() => openConfirm({
+                  title: 'Confirm ลบเคส',
+                  message: `คุณแน่ใจว่าจะลบเคส ${selectedTicket.req_id} นี้หรือไม่? การลบจะไม่สามารถกู้คืนได้.`,
+                  confirmLabel: 'ลบเคส',
+                  onConfirm: handleDeleteTicket
+                })} className="w-full py-2.5 bg-red-600 text-white rounded-lg font-medium text-sm hover:bg-red-700 transition">
+                  Delete Ticket
                 </button>
               )}
             </div>
           </div>
+        </div>
         </>
       )}
 
-      {/* --- NEW REQUEST MODAL (ENHANCED FORM) --- */}
+      {/* Comment Modal */}
+      {commentModalOpen && selectedTicket && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/30" onClick={() => setCommentModalOpen(false)}></div>
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl z-[90] p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold">
+                {commentMode === 'reject' ? 'Reject Ticket' : 'Add Comment'} to {selectedTicket.req_id}
+              </h3>
+              <button onClick={() => setCommentModalOpen(false)} className="text-slate-400 hover:text-slate-700"><IconX className="w-5 h-5" /></button>
+            </div>
+            <p className="text-sm text-slate-500 mb-3">
+              {commentMode === 'reject'
+                ? 'กรุณาระบุเหตุผลในการปฏิเสธเคสนี้อย่างสั้น ๆ ก่อนยืนยัน'
+                : 'Write a comment for the requester. Comments are stored separately from ticket details.'}
+            </p>
+            <textarea rows="4" value={commentText} onChange={(e) => setCommentText(e.target.value)} className="w-full border border-slate-200 rounded-lg p-3 mb-4" placeholder={commentMode === 'reject' ? 'Enter rejection reason...' : 'Write your comment...'}></textarea>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setCommentModalOpen(false)} className="px-4 py-2 rounded-lg">Cancel</button>
+              <button onClick={() => openConfirm({
+                title: commentMode === 'reject' ? 'Confirm reject ticket' : 'Confirm submit comment',
+                message: commentMode === 'reject'
+                  ? `คุณต้องการปฏิเสธเคส ${selectedTicket.req_id} โดยใช้เหตุผลนี้หรือไม่?`
+                  : `คุณต้องการบันทึกคอมเม้นท์สำหรับ ${selectedTicket.req_id} หรือไม่?`,
+                confirmLabel: commentMode === 'reject' ? 'Reject Ticket' : 'Save Comment',
+                onConfirm: handleSaveComment
+              })} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">
+                {commentMode === 'reject' ? 'Reject Ticket' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingAction && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40" onClick={closeConfirm}></div>
+          <div className="relative bg-white rounded-3xl w-full max-w-md shadow-2xl border border-slate-200 overflow-hidden z-[100]">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-amber-100 text-amber-700"><IconAlertCircle className="w-6 h-6" /></span>
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">{pendingAction.title}</h3>
+                  <p className="text-sm text-slate-500 mt-1">{pendingAction.message}</p>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3">
+              <button onClick={closeConfirm} className="px-4 py-2 rounded-lg text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 transition">Cancel</button>
+              <button onClick={executePendingAction} className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition">{pendingAction.confirmLabel}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- NEW REQUEST MODAL (ENHANCED Form) --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/40 backdrop-blur-sm transition-opacity">
           <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-full animate-in zoom-in-95 duration-200">
             
-            <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-white">
-              <div>
-                <h2 className="text-xl font-bold text-slate-900">New IT Service Request</h2>
-                <p className="text-sm text-slate-500 mt-0.5">Please provide details so we can assist you promptly.</p>
+            <div className="px-6 py-5 border-b border-slate-100 bg-white">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">New IT Service Request</h2>
+                  <p className="text-sm text-slate-500 mt-0.5">Please provide details so we can assist you promptly.</p>
+                </div>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 transition bg-slate-50 hover:bg-slate-100 p-2 rounded-full">
+                  <IconX className="w-5 h-5" />
+                </button>
               </div>
-              <button type="button" onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 transition bg-slate-50 hover:bg-slate-100 p-2 rounded-full">
-                <IconX className="w-5 h-5" />
-              </button>
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Requester</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">{user?.name || 'Unknown User'}</p>
+                  <p className="text-xs text-slate-500 mt-1">{user?.email || 'No email'}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Department</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">{user?.sect_long || user?.sect || 'No department'}</p>
+                  <p className="text-xs text-slate-500 mt-1">CC: {user?.cost_center || 'N/A'}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 flex items-center justify-center">
+                  {user?.empPic ? (
+                    <img src={user.empPic} alt={user?.name || 'User'} className="h-20 w-20 rounded-full object-cover" />
+                  ) : (
+                    <div className="h-20 w-20 rounded-full bg-slate-200 flex items-center justify-center text-slate-500">No Photo</div>
+                  )}
+                </div>
+              </div>
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-6 overflow-y-auto flex-1">
@@ -482,11 +749,11 @@ export default function ITServiceDesk() {
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">What do you need help with? <span className="text-red-500">*</span></label>
                   <select name="requestType" value={formData.requestType} onChange={handleInputChange} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all appearance-none cursor-pointer">
-                    <option value="Hardware Setup">🖥️ Hardware: New Setup / Installation</option>
-                    <option value="Relocation (Move)">📦 Hardware: Move / Relocation</option>
-                    <option value="Hardware Repair">🔧 Hardware: Repair / Replace</option>
-                    <option value="Software Install">💿 Software: Install / Update / License</option>
-                    <option value="Network & Printer">🖨️ Network & Printer Setup / Issues</option>
+                    <option value="Hardware Setup">🖥️ Hardware: ตั้งค่าใหม่ / ติดตั้ง</option>
+                    <option value="Relocation (Move)">📦 Hardware: ย้าย / ปรับปรุง</option>
+                    <option value="Hardware Repair">🔧 Hardware: ซ่อม / แทนที่</option>
+                    <option value="Software Install">💿 Software: ติดตั้ง / อัปเดต / License</option>
+                    <option value="Network & Printer">🖨️ Network & Printer ติดตั้ง / แก้ไข</option>
                     <option value="Account & Access">🔑 Account Access / VPN / Shared Drive</option>
                     <option value="Other">❓ Other Services</option>
                   </select>
@@ -494,8 +761,8 @@ export default function ITServiceDesk() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Subject / Project Name <span className="text-red-500">*</span></label>
-                    <input type="text" name="projectName" value={formData.projectName} onChange={handleInputChange} required className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all" placeholder="e.g. Move PC, Install Adobe" />
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Subject / Problem <span className="text-red-500">*</span></label>
+                    <input type="text" name="projectName" value={formData.projectName} onChange={handleInputChange} required className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all" placeholder="e.g. คอมพิวเตอร์ใช้งานไม่ได้, ปริ้นเตอร์ไม่ทำงาน" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Location / Desk Number <span className="text-red-500">*</span></label>
@@ -514,8 +781,7 @@ export default function ITServiceDesk() {
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Device Type</label>
                     <select name="deviceType" value={formData.deviceType} onChange={handleInputChange} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all appearance-none cursor-pointer">
-                      <option>Laptop (Windows)</option>
-                      <option>Laptop (Mac)</option>
+                      <option>Notebook (Windows)</option>
                       <option>Desktop Workstation</option>
                       <option>Monitor / Accessories Only</option>
                       <option>Printer / Scanner</option>

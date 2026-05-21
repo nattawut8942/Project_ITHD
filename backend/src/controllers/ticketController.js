@@ -5,7 +5,8 @@ import {
     ticketCreatedTemplate,
     ticketUpdatedTemplate,
     ticketAssignedTemplate,
-    ticketCompletedTemplate 
+    ticketCompletedTemplate,
+    ticketCommentTemplate
 } from '../utils/emailTemplates.js';
 import { 
     getEmailByEmpCode, 
@@ -25,14 +26,8 @@ import { logEmail } from '../services/emailLogService.js';
 export const getTickets = async (req, res) => {
     try {
         const pool = getPool();
-        let query = 'SELECT * FROM dbo.ithd_tickets ORDER BY created_at DESC';
+        const query = 'SELECT * FROM dbo.ithd_tickets ORDER BY created_at DESC';
         const request = pool.request();
-
-        if (!req.isITStaff) {
-            query = 'SELECT * FROM dbo.ithd_tickets WHERE empCode_created = @empCode ORDER BY created_at DESC';
-            request.input('empCode', sql.NVarChar, req.empCode);
-        }
-
         const result = await request.query(query);
 
         res.json({
@@ -52,24 +47,24 @@ export const getTicketById = async (req, res) => {
     try {
         const { ticketId } = req.params;
         const pool = getPool();
-        const request = pool.request()
-            .input('id', sql.Int, ticketId);
 
-        let query = 'SELECT * FROM dbo.ithd_tickets WHERE id = @id';
-        if (!req.isITStaff) {
-            query += ' AND empCode_created = @empCode';
-            request.input('empCode', sql.NVarChar, req.empCode);
-        }
+        const ticketRequest = pool.request().input('id', sql.Int, ticketId);
+        const ticketResult = await ticketRequest.query('SELECT * FROM dbo.ithd_tickets WHERE id = @id');
 
-        const result = await request.query(query);
-
-        if (result.recordset.length === 0) {
+        if (ticketResult.recordset.length === 0) {
             return res.status(404).json({ success: false, message: 'Ticket not found' });
         }
 
+        const commentsResult = await pool.request()
+            .input('ticket_id', sql.Int, ticketId)
+            .query('SELECT id, ticket_id, empCode, comment, created_at FROM dbo.ithd_comments WHERE ticket_id = @ticket_id ORDER BY created_at DESC');
+
         res.json({
             success: true,
-            data: result.recordset[0]
+            data: {
+                ...ticketResult.recordset[0],
+                comments: commentsResult.recordset
+            }
         });
     } catch (error) {
         console.error('Get ticket error:', error);
@@ -102,7 +97,26 @@ export const createTicket = async (req, res) => {
         }
 
         const pool = getPool();
-        const reqId = `REQ-${Math.floor(Date.now() / 1000).toString().slice(-6)}`;
+
+        // Generate req_id in format: TICKET-DDMMYYxxxxx (5-digit running number, start at 00000)
+        const now = new Date();
+        const dd = String(now.getDate()).padStart(2, '0');
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const yy = String(now.getFullYear()).slice(-2);
+        const prefix = `TICKET-${dd}${mm}${yy}`;
+
+        // Find max existing sequence for today
+        const seqResult = await pool.request()
+            .input('prefix', sql.NVarChar, prefix)
+            .query("SELECT MAX(CAST(RIGHT(req_id,5) AS INT)) AS maxSeq FROM dbo.ithd_tickets WHERE req_id LIKE @prefix + '%'");
+
+        const maxSeq = seqResult.recordset && seqResult.recordset[0] && seqResult.recordset[0].maxSeq != null
+            ? parseInt(seqResult.recordset[0].maxSeq, 10)
+            : null;
+
+        const nextSeq = (maxSeq !== null) ? (maxSeq + 1) : 0; // start from 00000 when none exist
+        const seqStr = String(nextSeq).padStart(5, '0');
+        const reqId = `${prefix}${seqStr}`;
 
         // ✅ Sync requester to dbo.ithd_users
         await syncUserFromDaikinAD(
@@ -194,18 +208,11 @@ export const createTicket = async (req, res) => {
  */
 export const updateTicket = async (req, res) => {
     try {
-        if (!req.isITStaff) {
-            return res.status(403).json({
-                success: false,
-                message: 'Only IT Staff (CC 7510) can update tickets'
-            });
-        }
-
         const { ticketId } = req.params;
-        const { status, empCode_assigned, notes } = req.body;
+        const { status, empCode_assigned, notes, comment } = req.body;
 
         const pool = getPool();
-        
+
         // GET original ticket data
         const originalTicket = await pool.request()
             .input('id', sql.Int, ticketId)
@@ -216,6 +223,24 @@ export const updateTicket = async (req, res) => {
         }
 
         const ticket = originalTicket.recordset[0];
+
+        // Permission: allow ticket creator to add a comment, otherwise only IT Staff can update
+        const isCommentOnly = !!comment && !status && !empCode_assigned && !notes;
+        if (!req.isITStaff && !isCommentOnly) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only IT Staff (CC 7510) can update tickets'
+            });
+        }
+
+        const isOwner = String(req.empCode || '').trim().toLowerCase() === String(ticket.empCode_created || '').trim().toLowerCase();
+        if (isCommentOnly && !req.isITStaff && !isOwner) {
+            return res.status(403).json({ success: false, message: 'Only the ticket owner or IT Staff can add comments' });
+        }
+
+        if (status === 'Rejected' && (!comment || !String(comment).trim())) {
+            return res.status(400).json({ success: false, message: 'A comment reason is required to reject a ticket' });
+        }
 
         // Update ticket
         const request = pool.request()
@@ -237,6 +262,16 @@ export const updateTicket = async (req, res) => {
         if (notes) {
             request.input('notes', sql.NVarChar, notes);
             updateFields.push('notes = @notes');
+        }
+
+        if (comment) {
+            const timestamp = new Date();
+            await pool.request()
+                .input('ticket_id', sql.Int, ticketId)
+                .input('empCode', sql.NVarChar, req.empCode)
+                .input('comment', sql.NVarChar, comment)
+                .input('created_at', sql.DateTime, timestamp)
+                .query(`INSERT INTO dbo.ithd_comments (ticket_id, empCode, comment, created_at) VALUES (@ticket_id, @empCode, @comment, @created_at)`);
         }
 
         if (status === 'Completed') {
@@ -287,7 +322,27 @@ export const updateTicket = async (req, res) => {
             );
         }
 
-        // ✅ EMAIL #2: Assignment notification to staff
+        // ✅ EMAIL #2: Comment notification to requester when IT staff replies
+        if (comment && req.isITStaff) {
+            const emailTemplate = ticketCommentTemplate(updatedData, req.user.name || 'IT Staff', comment);
+            const emailResult = await sendEmail(
+                ticket.requester_email,
+                emailTemplate.subject,
+                emailTemplate.html
+            );
+
+            await logEmail(
+                ticketId,
+                ticket.requester_email,
+                'Comment Added',
+                emailTemplate.subject,
+                emailResult.success ? 'Sent' : 'Failed',
+                emailResult.messageId || null,
+                emailResult.success ? null : emailResult.error
+            );
+        }
+
+        // ✅ EMAIL #3: Assignment notification to staff
         if (empCode_assigned && empCode_assigned !== ticket.empCode_assigned) {
             const staffEmail = await getEmailByEmpCode(empCode_assigned);
             const staffName = await getNameByEmpCode(empCode_assigned);
@@ -348,17 +403,9 @@ export const updateTicket = async (req, res) => {
  */
 export const deleteTicket = async (req, res) => {
     try {
-        if (!req.isITStaff) {
-            return res.status(403).json({
-                success: false,
-                message: 'Only IT Staff can delete tickets'
-            });
-        }
-
         const { ticketId } = req.params;
         const pool = getPool();
 
-        // GET ticket before deleting
         const ticketData = await pool.request()
             .input('id', sql.Int, ticketId)
             .query('SELECT * FROM dbo.ithd_tickets WHERE id = @id');
@@ -368,6 +415,14 @@ export const deleteTicket = async (req, res) => {
         }
 
         const ticket = ticketData.recordset[0];
+
+        const isOwner = String(req.empCode || '').trim().toLowerCase() === String(ticket.empCode_created || '').trim().toLowerCase();
+        if (!req.isITStaff && !isOwner) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only the ticket owner or IT Staff can delete tickets'
+            });
+        }
 
         // Delete ticket
         await pool.request()
@@ -414,7 +469,7 @@ export const deleteTicket = async (req, res) => {
 export const getTicketStats = async (req, res) => {
     try {
         const pool = getPool();
-        let query = `
+        const query = `
             SELECT 
                 COUNT(*) as total,
                 SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END) as pending,
@@ -422,13 +477,7 @@ export const getTicketStats = async (req, res) => {
                 SUM(CASE WHEN status = 'Completed' THEN 1 ELSE 0 END) as completed
             FROM dbo.ithd_tickets
         `;
-
         const request = pool.request();
-
-        if (!req.isITStaff) {
-            query += ' WHERE empCode_created = @empCode';
-            request.input('empCode', sql.NVarChar, req.empCode);
-        }
 
         const result = await request.query(query);
 

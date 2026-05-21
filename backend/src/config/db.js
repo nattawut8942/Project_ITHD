@@ -5,7 +5,8 @@ dotenv.config();
 
 const config = {
     user: process.env.DB_USER,
-    password: process.env.DB_PASS,
+    // Support either DB_PASS or DB_PASSWORD from environment
+    password: process.env.DB_PASS || process.env.DB_PASSWORD,
     server: process.env.DB_HOST,
     database: process.env.DB_NAME,
     options: {
