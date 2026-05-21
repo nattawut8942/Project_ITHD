@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Package, AlertTriangle, User, Lock, Eye, EyeOff, Loader2, LogOut } from 'lucide-react';
+import { ticketAPI } from '../utils/apiClient';
 
 // --- Inline SVG Icons (Same as before) ---
 const IconMonitor = ({ className = "w-6 h-6" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>;
@@ -44,74 +45,18 @@ export default function AppWithAuth() {
   // Check if user is IT Staff (CC 7510)
   const isITStaff = user?.cost_center === '7510';
 
-  // Fetch requests with auth token
+  // Fetch requests from actual database API
   const fetchRequests = async () => {
     setIsLoading(true);
     try {
-      // TODO: Replace with actual API call
-      // const response = await fetch(`${API_BASE}/requests`, {
-      //   headers: { 'Authorization': `Bearer ${token}` }
-      // });
-      
-      // For now, using mock data
-      setTimeout(() => {
-        setRequests([
-          {
-            id: 1,
-            req_id: 'REQ-001',
-            request_type: 'Hardware Setup',
-            project_name: 'New Office Setup',
-            requester_name: 'Natthawut Y.',
-            empCode_created: 'EMP001', // Primary key for filtering
-            cost_center: '7510',
-            device_type: 'Desktop',
-            device_count: 5,
-            location: 'Building A, Floor 3',
-            status: 'Pending',
-            target_date: '2026-05-25',
-            priority: 'High',
-            notes: 'Need them set up before the new team arrives on Monday.',
-            created_at: '2026-05-18T09:00:00Z'
-          },
-          {
-            id: 2,
-            req_id: 'REQ-002',
-            request_type: 'Hardware Repair',
-            project_name: 'Server Room Monitor Broken',
-            requester_name: 'Namnueng Y.',
-            empCode_created: 'EMP002',
-            cost_center: '7510',
-            device_type: 'Monitor Only',
-            device_count: 1,
-            location: 'Server Room',
-            status: 'In Progress',
-            target_date: '2026-05-21',
-            priority: 'Medium',
-            notes: 'Replacement for the broken screen in rack 4.',
-            created_at: '2026-05-19T14:30:00Z'
-          },
-          {
-            id: 3,
-            req_id: 'REQ-003',
-            request_type: 'Software Install',
-            project_name: 'Adobe Creative Cloud',
-            requester_name: 'Somdet S.',
-            empCode_created: 'EMP003',
-            cost_center: '8200',
-            device_type: 'Laptop (Mac)',
-            device_count: 3,
-            location: 'Building B, Floor 2',
-            status: 'Completed',
-            target_date: '2026-05-15',
-            priority: 'Normal',
-            notes: 'Designers need MacBooks with M-series chips and full Adobe Suite.',
-            created_at: '2026-05-10T10:15:00Z'
-          }
-        ]);
-        setIsLoading(false);
-      }, 600);
+      const response = await ticketAPI.getTickets();
+      // Ensure we set the array of tickets. Assuming API returns { success: true, data: [...] } or just an array.
+      const tickets = response.data.data || response.data;
+      setRequests(Array.isArray(tickets) ? tickets : []);
     } catch (error) {
-      showNotification('Failed to load requests', 'error');
+      console.error('Fetch error:', error);
+      showNotification('Failed to load requests from database', 'error');
+    } finally {
       setIsLoading(false);
     }
   };
@@ -120,44 +65,47 @@ export default function AppWithAuth() {
     fetchRequests();
   }, []);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.projectName || !formData.location) {
       showNotification('Please fill in required fields.', 'error');
       return;
     }
 
-    const newReq = {
-      id: Date.now(),
-      req_id: `REQ-${Math.floor(Date.now() / 1000).toString().slice(-6)}`,
-      request_type: formData.requestType,
-      project_name: formData.projectName,
-      requester_name: user.name,
-      empCode_created: user.empcode, // Use empCode from auth context
-      cost_center: user.cost_center,
-      device_type: formData.deviceType,
-      device_count: formData.deviceCount,
-      location: formData.location,
-      status: 'Pending',
-      priority: formData.priority,
-      target_date: formData.targetDate || new Date().toISOString().split('T')[0],
-      notes: formData.requirements,
-      created_at: new Date().toISOString()
-    };
+    try {
+      // Map formData to what the backend expects (matching dbo.ithd_tickets schema)
+      const ticketPayload = {
+        request_type: formData.requestType,
+        project_name: formData.projectName,
+        device_type: formData.deviceType,
+        device_count: formData.deviceCount,
+        location: formData.location,
+        priority: formData.priority,
+        target_date: formData.targetDate || new Date().toISOString().split('T')[0],
+        notes: formData.requirements
+      };
 
-    setRequests([newReq, ...requests]);
-    showNotification('Request submitted successfully!', 'success');
-    setIsModalOpen(false);
-    setFormData({
-      requestType: 'Hardware Setup',
-      projectName: '',
-      targetDate: '',
-      deviceType: 'Laptop (Windows)',
-      deviceCount: 1,
-      location: '',
-      priority: 'Normal',
-      requirements: ''
-    });
+      await ticketAPI.createTicket(ticketPayload);
+      
+      showNotification('Request submitted successfully!', 'success');
+      setIsModalOpen(false);
+      setFormData({
+        requestType: 'Hardware Setup',
+        projectName: '',
+        targetDate: '',
+        deviceType: 'Laptop (Windows)',
+        deviceCount: 1,
+        location: '',
+        priority: 'Normal',
+        requirements: ''
+      });
+      
+      // Refresh the list with actual data from DB
+      fetchRequests();
+    } catch (error) {
+      console.error('Submit error:', error);
+      showNotification('Failed to submit request to database', 'error');
+    }
   };
 
   const showNotification = (message, type) => {
