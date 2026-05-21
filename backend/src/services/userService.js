@@ -116,10 +116,11 @@ export const syncUserFromDaikinAD = async (empCode, userName, email, costCenter,
     try {
         const pool = getPool();
         
-        // Check if user exists
+        // Check if user exists by empCode or email
         const checkUser = await pool.request()
             .input('empCode', sql.NVarChar, empCode)
-            .query('SELECT 1 FROM dbo.ithd_users WHERE empCode = @empCode');
+            .input('email', sql.NVarChar, email)
+            .query('SELECT empCode FROM dbo.ithd_users WHERE empCode = @empCode OR email = @email');
 
         if (checkUser.recordset.length === 0) {
             // Insert new user
@@ -134,28 +135,27 @@ export const syncUserFromDaikinAD = async (empCode, userName, email, costCenter,
                     VALUES (@empCode, @email, @name, @cost_center, @sect)
                 `);
             
-            // Clear cache
             userCache.delete(empCode);
-            
             console.log(`✅ User synced to dbo.ithd_users: ${empCode}`);
             return { success: true, action: 'inserted' };
         } else {
-            // Update existing user
+            // Update existing user (match by empCode or fallback to email)
+            const existingEmpCode = checkUser.recordset[0].empCode;
             await pool.request()
-                .input('empCode', sql.NVarChar, empCode)
+                .input('newEmpCode', sql.NVarChar, empCode)
+                .input('targetEmpCode', sql.NVarChar, existingEmpCode)
                 .input('email', sql.NVarChar, email)
                 .input('name', sql.NVarChar, userName)
                 .input('cost_center', sql.NVarChar, costCenter)
                 .input('sect', sql.NVarChar, sect)
                 .query(`
                     UPDATE dbo.ithd_users 
-                    SET email = @email, name = @name, cost_center = @cost_center, sect = @sect
-                    WHERE empCode = @empCode
+                    SET empCode = @newEmpCode, email = @email, name = @name, cost_center = @cost_center, sect = @sect
+                    WHERE empCode = @targetEmpCode
                 `);
             
-            // Clear cache
             userCache.delete(empCode);
-            
+            userCache.delete(existingEmpCode);
             return { success: true, action: 'updated' };
         }
     } catch (error) {
