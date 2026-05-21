@@ -60,14 +60,6 @@ export const login = async (req, res) => {
                 return res.status(401).json({ success: false, message: 'Invalid username or password' });
             }
 
-            // ✅ Only CC 7510 allowed
-            if (costCenter !== '7510') {
-                return res.status(403).json({
-                    success: false,
-                    message: `Access denied. Only Cost Center 7510 (IT Staff) can use this system. Your CC: ${costCenter || 'N/A'}`
-                });
-            }
-
             // Check if user is admin/staff in database
             const pool = getPool();
             const adminCheck = await pool.request()

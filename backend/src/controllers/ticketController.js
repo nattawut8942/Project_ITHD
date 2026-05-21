@@ -122,7 +122,7 @@ export const createTicket = async (req, res) => {
             .input('empCode_created', sql.NVarChar, req.empCode)
             .input('cost_center', sql.NVarChar, req.costCenter)
             .input('device_type', sql.NVarChar, device_type || 'Not Specified')
-            .input('device_count', sql.Int, device_count || 1)
+            .input('device_count', sql.Int, parseInt(device_count, 10) || 1)
             .input('location', sql.NVarChar, location)
             .input('status', sql.NVarChar, 'Pending')
             .input('priority', sql.NVarChar, priority || 'Normal')

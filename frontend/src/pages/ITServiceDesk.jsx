@@ -78,7 +78,7 @@ export default function AppWithAuth() {
         request_type: formData.requestType,
         project_name: formData.projectName,
         device_type: formData.deviceType,
-        device_count: formData.deviceCount,
+        device_count: parseInt(formData.deviceCount, 10) || 1,
         location: formData.location,
         priority: formData.priority,
         target_date: formData.targetDate || new Date().toISOString().split('T')[0],
