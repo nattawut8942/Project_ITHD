@@ -1,12 +1,13 @@
 // backend/src/route/ticketRoute.js
 import express from 'express';
-import {
     getTickets,
     getTicketById,
     createTicket,
     updateTicket,
     deleteTicket,
-    getTicketStats
+    getTicketStats,
+    getTicketHistory,
+    addTicketComment
 } from '../controllers/ticketController.js';
 import { verifyToken, filterByEmpCode, checkCC7510 } from '../middleware/authMiddleware.js';
 
@@ -35,5 +36,11 @@ router.put('/tickets/:ticketId', verifyToken, filterByEmpCode, updateTicket);
 
 // DELETE ticket (ticket owner or IT Staff)
 router.delete('/tickets/:ticketId', verifyToken, filterByEmpCode, deleteTicket);
+
+// GET ticket history
+router.get('/tickets/:ticketId/history', verifyToken, filterByEmpCode, getTicketHistory);
+
+// POST new comment
+router.post('/tickets/:ticketId/comments', verifyToken, filterByEmpCode, addTicketComment);
 
 export default router;

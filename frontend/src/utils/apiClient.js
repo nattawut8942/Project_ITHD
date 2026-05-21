@@ -65,5 +65,11 @@ export const ticketAPI = {
     deleteTicket: (ticketId) => apiClient.delete(`/tickets/${ticketId}`),
 
     // Get statistics
-    getStats: () => apiClient.get('/tickets/stats')
+    getStats: () => apiClient.get('/tickets/stats'),
+
+    // Get ticket history
+    getTicketHistory: (ticketId) => apiClient.get(`/tickets/${ticketId}/history`),
+
+    // Add comment
+    addTicketComment: (ticketId, comment) => apiClient.post(`/tickets/${ticketId}/comments`, { comment })
 };

@@ -161,6 +161,18 @@ export const createTicket = async (req, res) => {
 
         const ticketId = result.recordset[0].id;
 
+        // ✅ LOG History: Ticket Created
+        await pool.request()
+            .input('ticket_id', sql.Int, ticketId)
+            .input('action_type', sql.VarChar(50), 'Created')
+            .input('actor_empCode', sql.VarChar(50), req.empCode)
+            .input('actor_name', sql.NVarChar(100), req.user.name)
+            .input('details', sql.NVarChar(sql.MAX), 'Ticket opened by user')
+            .query(`
+                INSERT INTO dbo.ithd_ticket_history (ticket_id, action_type, actor_empCode, actor_name, details, created_at)
+                VALUES (@ticket_id, @action_type, @actor_empCode, @actor_name, @details, GETDATE())
+            `);
+
         // ✅ GET ticket details for email
         const ticketDetails = await pool.request()
             .input('id', sql.Int, ticketId)
@@ -281,6 +293,27 @@ export const updateTicket = async (req, res) => {
 
         const query = `UPDATE dbo.ithd_tickets SET ${updateFields.join(', ')} WHERE id = @id`;
         await request.query(query);
+
+        // ✅ LOG History updates
+        if (status && status !== ticket.status) {
+            await pool.request()
+                .input('ticket_id', sql.Int, ticketId)
+                .input('action_type', sql.VarChar(50), 'Status Update')
+                .input('actor_empCode', sql.VarChar(50), req.empCode)
+                .input('actor_name', sql.NVarChar(100), req.user.name)
+                .input('details', sql.NVarChar(sql.MAX), `Status changed from ${ticket.status} to ${status}`)
+                .query(`INSERT INTO dbo.ithd_ticket_history (ticket_id, action_type, actor_empCode, actor_name, details, created_at) VALUES (@ticket_id, @action_type, @actor_empCode, @actor_name, @details, GETDATE())`);
+        }
+        if (empCode_assigned && empCode_assigned !== ticket.empCode_assigned) {
+            const staffName = await getNameByEmpCode(empCode_assigned) || empCode_assigned;
+            await pool.request()
+                .input('ticket_id', sql.Int, ticketId)
+                .input('action_type', sql.VarChar(50), 'Assigned')
+                .input('actor_empCode', sql.VarChar(50), req.empCode)
+                .input('actor_name', sql.NVarChar(100), req.user.name)
+                .input('details', sql.NVarChar(sql.MAX), `Assigned to IT Staff: ${staffName}`)
+                .query(`INSERT INTO dbo.ithd_ticket_history (ticket_id, action_type, actor_empCode, actor_name, details, created_at) VALUES (@ticket_id, @action_type, @actor_empCode, @actor_name, @details, GETDATE())`);
+        }
 
         // GET updated ticket
         const updatedTicket = await pool.request()
@@ -488,5 +521,76 @@ export const getTicketStats = async (req, res) => {
     } catch (error) {
         console.error('Get stats error:', error);
         res.status(500).json({ success: false, message: 'Failed to fetch stats' });
+    }
+};
+
+/**
+ * GET ticket history / timeline
+ */
+export const getTicketHistory = async (req, res) => {
+    try {
+        const { ticketId } = req.params;
+        const pool = getPool();
+        const request = pool.request()
+            .input('ticket_id', sql.Int, ticketId);
+
+        const result = await request.query('SELECT * FROM dbo.ithd_ticket_history WHERE ticket_id = @ticket_id ORDER BY created_at ASC');
+
+        res.json({
+            success: true,
+            data: result.recordset
+        });
+    } catch (error) {
+        console.error('Get history error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch ticket history' });
+    }
+};
+
+/**
+ * POST a new comment to a ticket
+ */
+export const addTicketComment = async (req, res) => {
+    try {
+        const { ticketId } = req.params;
+        const { comment } = req.body;
+
+        if (!comment) {
+            return res.status(400).json({ success: false, message: 'Comment text is required' });
+        }
+
+        const pool = getPool();
+
+        // Verify ticket exists and user has access
+        const checkReq = pool.request().input('id', sql.Int, ticketId);
+        let checkQuery = 'SELECT * FROM dbo.ithd_tickets WHERE id = @id';
+        if (!req.isITStaff) {
+            checkQuery += ' AND empCode_created = @empCode';
+            checkReq.input('empCode', sql.NVarChar, req.empCode);
+        }
+        const ticketCheck = await checkReq.query(checkQuery);
+
+        if (ticketCheck.recordset.length === 0) {
+            return res.status(404).json({ success: false, message: 'Ticket not found or access denied' });
+        }
+
+        // Insert comment to history
+        await pool.request()
+            .input('ticket_id', sql.Int, ticketId)
+            .input('action_type', sql.VarChar(50), 'Comment')
+            .input('actor_empCode', sql.VarChar(50), req.empCode)
+            .input('actor_name', sql.NVarChar(100), req.user.name)
+            .input('details', sql.NVarChar(sql.MAX), comment)
+            .query(`
+                INSERT INTO dbo.ithd_ticket_history (ticket_id, action_type, actor_empCode, actor_name, details, created_at)
+                VALUES (@ticket_id, @action_type, @actor_empCode, @actor_name, @details, GETDATE())
+            `);
+
+        res.status(201).json({
+            success: true,
+            message: 'Comment added successfully'
+        });
+    } catch (error) {
+        console.error('Add comment error:', error);
+        res.status(500).json({ success: false, message: 'Failed to add comment' });
     }
 };

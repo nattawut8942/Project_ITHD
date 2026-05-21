@@ -35,6 +35,11 @@ export default function ITServiceDesk() {
   const [notification, setNotification] = useState(null);
   const [currentView, setCurrentView] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Timeline / Comment states
+  const [ticketHistory, setTicketHistory] = useState([]);
+  const [commentText, setCommentText] = useState('');
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
 
   const [formData, setFormData] = useState({
     requestType: 'Hardware Setup', projectName: '', targetDate: '', deviceType: 'Notebook (Windows)', deviceCount: 1, location: '', priority: 'Normal', requirements: ''
@@ -60,6 +65,40 @@ export default function ITServiceDesk() {
   useEffect(() => { 
     fetchRequests(); 
   }, []);
+
+  useEffect(() => {
+    if (selectedTicket) {
+      fetchTicketHistory(selectedTicket.id);
+    } else {
+      setTicketHistory([]);
+      setCommentText('');
+    }
+  }, [selectedTicket]);
+
+  const fetchTicketHistory = async (id) => {
+    try {
+      const response = await ticketAPI.getTicketHistory(id);
+      setTicketHistory(response.data.data || []);
+    } catch (error) {
+      console.error('Failed to fetch history:', error);
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!commentText.trim() || !selectedTicket) return;
+    setIsSubmittingComment(true);
+    try {
+      await ticketAPI.addTicketComment(selectedTicket.id, commentText);
+      setCommentText('');
+      fetchTicketHistory(selectedTicket.id);
+      showNotification('Comment added successfully', 'success');
+    } catch (error) {
+      console.error('Add comment error:', error);
+      showNotification('Failed to add comment', 'error');
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -512,6 +551,7 @@ export default function ITServiceDesk() {
                   <p className="text-slate-500 mb-1 flex items-center gap-1.5"><IconUser className="w-4 h-4"/> Requester</p>
                   <p className="font-medium text-slate-900">{selectedTicket.requester_name}</p>
                   <p className="text-xs text-slate-500">CC: {selectedTicket.cost_center}</p>
+                  <p className="text-xs text-slate-500">{selectedTicket.requester_email}</p>
                 </div>
                 <div>
                   <p className="text-slate-500 mb-1 flex items-center gap-1.5"><IconLaptop className="w-4 h-4"/> Equipment</p>
@@ -560,40 +600,28 @@ export default function ITServiceDesk() {
 
               {/* Timeline (Modern Feature) */}
               <div className="pt-6 border-t border-slate-100">
-                <p className="text-sm text-slate-900 mb-4 font-bold">Request Timeline</p>
-                <div className="grid grid-cols-1 gap-4">
-                  {[
-                    {
-                      title: 'Ticket Opened',
-                      active: true,
-                      description: new Date(selectedTicket.created_at).toLocaleString('en-GB'),
-                      color: 'bg-slate-300 text-slate-900'
-                    },
-                    {
-                      title: 'Assigned to IT Staff',
-                      active: selectedTicket.status !== 'Pending',
-                      description: selectedTicket.status !== 'Pending' ? 'Ticket has been assigned' : 'Waiting for IT to accept',
-                      color: selectedTicket.status !== 'Pending' ? 'bg-indigo-500 text-white' : 'bg-amber-100 text-amber-700'
-                    },
-                    {
-                      title: 'In Progress',
-                      active: selectedTicket.status === 'In Progress' || selectedTicket.status === 'Completed',
-                      description: selectedTicket.status === 'In Progress' ? 'IT is working on this ticket' : selectedTicket.status === 'Completed' ? 'Work completed' : 'Still pending',
-                      color: selectedTicket.status === 'In Progress' ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500'
-                    },
-                    {
-                      title: selectedTicket.status === 'Rejected' ? 'Rejected' : 'Completed',
-                      active: selectedTicket.status === 'Completed' || selectedTicket.status === 'Rejected',
-                      description: selectedTicket.status === 'Completed' ? 'Ticket has been completed' : selectedTicket.status === 'Rejected' ? 'Ticket has been rejected' : 'Not finished yet',
-                      color: selectedTicket.status === 'Completed' ? 'bg-emerald-500 text-white' : selectedTicket.status === 'Rejected' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-500'
-                    }
-                  ].map((step) => (
-                    <div key={step.title} className="relative pl-6">
-                      <span className={`absolute -left-[9px] top-2 w-4 h-4 rounded-full ring-4 ring-white ${step.active ? step.color : 'bg-slate-200'}`}></span>
-                      <p className={`text-sm font-semibold ${step.active ? 'text-slate-900' : 'text-slate-500'}`}>{step.title}</p>
-                      <p className="text-xs text-slate-500 mt-1">{step.description}</p>
+                <p className="text-sm text-slate-900 mb-4 font-bold">Request Timeline & Activity</p>
+                <div className="relative border-l-2 border-slate-100 ml-3 space-y-6">
+                  {ticketHistory.length === 0 ? (
+                    <div className="relative pl-6">
+                        <span className="absolute -left-[9px] top-1 w-4 h-4 rounded-full bg-slate-300 ring-4 ring-white"></span>
+                        <p className="text-sm font-medium text-slate-900">Ticket Opened</p>
+                        <p className="text-xs text-slate-500 mt-1">{new Date(selectedTicket.created_at).toLocaleString('en-GB')}</p>
                     </div>
-                  ))}
+                  ) : (
+                    ticketHistory.map((log) => (
+                      <div key={log.id} className="relative pl-6">
+                        <span className={`absolute -left-[9px] top-1 w-4 h-4 rounded-full ring-4 ring-white ${log.action_type === 'Comment' ? 'bg-amber-400' : log.action_type === 'Created' ? 'bg-slate-300' : log.action_type === 'Completed' ? 'bg-emerald-500' : 'bg-indigo-500'}`}></span>
+                        <div className="flex justify-between items-start gap-4">
+                            <div>
+                                <p className="text-sm font-bold text-slate-900">{log.action_type} <span className="font-normal text-slate-500">by {log.actor_name}</span></p>
+                                <p className="text-sm text-slate-700 mt-1 whitespace-pre-wrap">{log.details}</p>
+                            </div>
+                            <span className="text-xs text-slate-400 whitespace-nowrap">{new Date(log.created_at).toLocaleString('en-GB')}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 
