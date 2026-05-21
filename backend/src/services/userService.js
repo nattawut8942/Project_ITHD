@@ -1,183 +1,91 @@
-// backend/src/services/userService.js (UPDATED)
+// backend/src/services/userService.js (FIXED - MERGE)
 import { sql, getPool } from '../config/db.js';
 
-/**
- * User Service - Handle user-related queries
- * Uses dbo.ithd_users table
- * Caches results to reduce database calls
- */
-
-// Simple in-memory cache (use Redis in production)
 const userCache = new Map();
-const CACHE_DURATION = 3600000; // 1 hour
+const CACHE_DURATION = 3600000;
 
-/**
- * Get user email by empCode
- * Priority:
- * 1. Check in-memory cache
- * 2. Query database (dbo.ithd_users)
- * 3. Fallback: construct from empCode
- */
+// ✅ FIXED: MERGE แทน INSERT (ไม่มี duplicate error)
+export const syncUserFromDaikinAD = async (empCode, userName, email, costCenter, sect) => {
+    try {
+        const pool = getPool();
+        await pool.request()
+            .input('empCode',     sql.NVarChar(50),  empCode)
+            .input('email',       sql.NVarChar(255), email)
+            .input('name',        sql.NVarChar(255), userName)
+            .input('cost_center', sql.NVarChar(10),  costCenter)
+            .input('sect',        sql.NVarChar(100), sect)
+            .query(`
+                MERGE dbo.ithd_users AS target
+                USING (SELECT @empCode AS empCode) AS source
+                ON target.empCode = source.empCode
+                WHEN MATCHED THEN
+                    UPDATE SET
+                        email       = @email,
+                        name        = @name,
+                        cost_center = @cost_center,
+                        sect        = @sect
+                WHEN NOT MATCHED THEN
+                    INSERT (empCode, email, name, cost_center, sect)
+                    VALUES (@empCode, @email, @name, @cost_center, @sect);
+            `);
+        userCache.delete(empCode);
+        return { success: true };
+    } catch (error) {
+        console.error('❌ Sync user error:', error.message);
+        throw error;
+    }
+};
+
 export const getEmailByEmpCode = async (empCode) => {
     if (!empCode) return null;
-
-    // Check cache
     if (userCache.has(empCode)) {
         const cached = userCache.get(empCode);
-        if (Date.now() - cached.timestamp < CACHE_DURATION) {
-            return cached.email;
-        }
+        if (Date.now() - cached.timestamp < CACHE_DURATION) return cached.email;
         userCache.delete(empCode);
     }
-
     try {
         const pool = getPool();
         const result = await pool.request()
-            .input('empCode', sql.NVarChar, empCode)
+            .input('empCode', sql.NVarChar(50), empCode)
             .query('SELECT email FROM dbo.ithd_users WHERE empCode = @empCode');
-
         if (result.recordset.length > 0) {
             const email = result.recordset[0].email;
-            
-            // Cache it
-            userCache.set(empCode, {
-                email,
-                timestamp: Date.now()
-            });
-            
+            userCache.set(empCode, { email, timestamp: Date.now() });
             return email;
         }
     } catch (error) {
         console.warn(`Failed to get email for ${empCode}:`, error.message);
     }
-
-    // Fallback: construct from empCode
-    const emailPrefix = empCode.toLowerCase().replace(/emp\d+/i, '').trim();
-    const email = emailPrefix.includes('@') 
-        ? emailPrefix 
-        : `${emailPrefix}@dci.daikin.co.jp`;
-    
-    return email;
+    return `${empCode}@dci.daikin.co.jp`;
 };
 
-/**
- * Get user details by empCode from dbo.ithd_users
- */
 export const getUserByEmpCode = async (empCode) => {
     if (!empCode) return null;
-
     try {
         const pool = getPool();
         const result = await pool.request()
-            .input('empCode', sql.NVarChar, empCode)
-            .query(`
-                SELECT empCode, email, name, cost_center, sect
-                FROM dbo.ithd_users
-                WHERE empCode = @empCode
-            `);
-
-        if (result.recordset.length > 0) {
-            return result.recordset[0];
-        }
+            .input('empCode', sql.NVarChar(50), empCode)
+            .query('SELECT TOP 1 empCode, email, name, cost_center, sect FROM dbo.ithd_users WHERE empCode = @empCode');
+        return result.recordset[0] || null;
     } catch (error) {
         console.warn(`Failed to get user ${empCode}:`, error.message);
+        return null;
     }
-
-    return null;
 };
 
-/**
- * Get user name by empCode
- */
 export const getNameByEmpCode = async (empCode) => {
     if (!empCode) return 'User';
-
     try {
         const pool = getPool();
         const result = await pool.request()
-            .input('empCode', sql.NVarChar, empCode)
+            .input('empCode', sql.NVarChar(50), empCode)
             .query('SELECT name FROM dbo.ithd_users WHERE empCode = @empCode');
-
-        if (result.recordset.length > 0) {
-            return result.recordset[0].name;
-        }
+        if (result.recordset.length > 0) return result.recordset[0].name;
     } catch (error) {
         console.warn(`Failed to get name for ${empCode}:`, error.message);
     }
-
     return empCode;
 };
 
-/**
- * Sync users from Daikin AD API to dbo.ithd_users
- * Call this periodically to keep user database updated
- */
-export const syncUserFromDaikinAD = async (empCode, userName, email, costCenter, sect) => {
-    try {
-        const pool = getPool();
-        
-        // Check if user exists
-        const checkUser = await pool.request()
-            .input('empCode', sql.NVarChar, empCode)
-            .query('SELECT 1 FROM dbo.ithd_users WHERE empCode = @empCode');
-
-        if (checkUser.recordset.length === 0) {
-            // Insert new user
-            await pool.request()
-                .input('empCode', sql.NVarChar, empCode)
-                .input('email', sql.NVarChar, email)
-                .input('name', sql.NVarChar, userName)
-                .input('cost_center', sql.NVarChar, costCenter)
-                .input('sect', sql.NVarChar, sect)
-                .query(`
-                    INSERT INTO dbo.ithd_users (empCode, email, name, cost_center, sect)
-                    VALUES (@empCode, @email, @name, @cost_center, @sect)
-                `);
-            
-            // Clear cache
-            userCache.delete(empCode);
-            
-            console.log(`✅ User synced to dbo.ithd_users: ${empCode}`);
-            return { success: true, action: 'inserted' };
-        } else {
-            // Update existing user
-            await pool.request()
-                .input('empCode', sql.NVarChar, empCode)
-                .input('email', sql.NVarChar, email)
-                .input('name', sql.NVarChar, userName)
-                .input('cost_center', sql.NVarChar, costCenter)
-                .input('sect', sql.NVarChar, sect)
-                .query(`
-                    UPDATE dbo.ithd_users 
-                    SET email = @email, name = @name, cost_center = @cost_center, sect = @sect
-                    WHERE empCode = @empCode
-                `);
-            
-            // Clear cache
-            userCache.delete(empCode);
-            
-            return { success: true, action: 'updated' };
-        }
-    } catch (error) {
-        console.error(`Failed to sync user ${empCode}:`, error.message);
-        return { success: false, error: error.message };
-    }
-};
-
-/**
- * Clear cache (useful for testing or manual refresh)
- */
-export const clearUserCache = () => {
-    userCache.clear();
-    console.log('User cache cleared');
-};
-
-/**
- * Get cache stats (for debugging)
- */
-export const getCacheStats = () => {
-    return {
-        size: userCache.size,
-        entries: Array.from(userCache.keys())
-    };
-};
+export const clearUserCache = () => userCache.clear();
+export const getCacheStats  = () => ({ size: userCache.size });

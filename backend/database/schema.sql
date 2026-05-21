@@ -12,6 +12,7 @@ BEGIN
         name NVARCHAR(255) NOT NULL,
         cost_center NVARCHAR(10),
         sect NVARCHAR(100),
+        empPic NVARCHAR(500),
         created_at DATETIME DEFAULT GETDATE()
     );
     
@@ -22,6 +23,17 @@ ELSE
 BEGIN
     PRINT 'dbo.ithd_users table already exists';
 END;
+
+-- Add empPic column if missing for existing databases
+IF NOT EXISTS (
+    SELECT * FROM sys.columns 
+    WHERE object_id = OBJECT_ID(N'dbo.ithd_users')
+      AND name = 'empPic'
+)
+BEGIN
+    ALTER TABLE dbo.ithd_users ADD empPic NVARCHAR(500) NULL;
+    PRINT '✅ Added empPic column to dbo.ithd_users';
+END
 
 -- ============================================
 -- TABLE 2: dbo.ithd_tickets (Main tickets)

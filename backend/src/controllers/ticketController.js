@@ -145,7 +145,19 @@ export const createTicket = async (req, res) => {
                 SELECT SCOPE_IDENTITY() as id;
             `);
 
-        const ticketId = result.recordset[0].id;
+        let ticketId = result.recordset?.[0]?.id;
+
+        if (!ticketId) {
+            const fallbackResult = await pool.request()
+                .input('req_id', sql.NVarChar, reqId)
+                .query('SELECT TOP 1 id FROM dbo.ithd_tickets WHERE req_id = @req_id ORDER BY id DESC');
+
+            ticketId = fallbackResult.recordset?.[0]?.id;
+        }
+
+        if (!ticketId) {
+            throw new Error('Ticket creation succeeded but ticket ID could not be determined.');
+        }
 
         // ✅ GET ticket details for email
         const ticketDetails = await pool.request()
@@ -153,6 +165,9 @@ export const createTicket = async (req, res) => {
             .query('SELECT * FROM dbo.ithd_tickets WHERE id = @id');
 
         const ticket = ticketDetails.recordset[0];
+        if (!ticket) {
+            throw new Error('Ticket was created but could not be loaded from the database.');
+        }
 
         // ✅ SEND EMAIL: Ticket created confirmation
         const emailTemplate = ticketCreatedTemplate(ticket, req.user.name);
@@ -184,7 +199,7 @@ export const createTicket = async (req, res) => {
         });
     } catch (error) {
         console.error('Create ticket error:', error);
-        res.status(500).json({ success: false, message: 'Failed to create ticket' });
+        res.status(500).json({ success: false, message: 'Failed to create ticket', error: error.message });
     }
 };
 

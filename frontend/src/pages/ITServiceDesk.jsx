@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { API_BASE } from '../config/api';
 import { Package, AlertTriangle, User, Lock, Eye, EyeOff, Loader2, LogOut } from 'lucide-react';
 
 // --- Inline SVG Icons (Same as before) ---
@@ -48,70 +49,24 @@ export default function AppWithAuth() {
   const fetchRequests = async () => {
     setIsLoading(true);
     try {
-      // TODO: Replace with actual API call
-      // const response = await fetch(`${API_BASE}/requests`, {
-      //   headers: { 'Authorization': `Bearer ${token}` }
-      // });
-      
-      // For now, using mock data
-      setTimeout(() => {
-        setRequests([
-          {
-            id: 1,
-            req_id: 'REQ-001',
-            request_type: 'Hardware Setup',
-            project_name: 'New Office Setup',
-            requester_name: 'Natthawut Y.',
-            empCode_created: 'EMP001', // Primary key for filtering
-            cost_center: '7510',
-            device_type: 'Desktop',
-            device_count: 5,
-            location: 'Building A, Floor 3',
-            status: 'Pending',
-            target_date: '2026-05-25',
-            priority: 'High',
-            notes: 'Need them set up before the new team arrives on Monday.',
-            created_at: '2026-05-18T09:00:00Z'
-          },
-          {
-            id: 2,
-            req_id: 'REQ-002',
-            request_type: 'Hardware Repair',
-            project_name: 'Server Room Monitor Broken',
-            requester_name: 'Namnueng Y.',
-            empCode_created: 'EMP002',
-            cost_center: '7510',
-            device_type: 'Monitor Only',
-            device_count: 1,
-            location: 'Server Room',
-            status: 'In Progress',
-            target_date: '2026-05-21',
-            priority: 'Medium',
-            notes: 'Replacement for the broken screen in rack 4.',
-            created_at: '2026-05-19T14:30:00Z'
-          },
-          {
-            id: 3,
-            req_id: 'REQ-003',
-            request_type: 'Software Install',
-            project_name: 'Adobe Creative Cloud',
-            requester_name: 'Somdet S.',
-            empCode_created: 'EMP003',
-            cost_center: '8200',
-            device_type: 'Laptop (Mac)',
-            device_count: 3,
-            location: 'Building B, Floor 2',
-            status: 'Completed',
-            target_date: '2026-05-15',
-            priority: 'Normal',
-            notes: 'Designers need MacBooks with M-series chips and full Adobe Suite.',
-            created_at: '2026-05-10T10:15:00Z'
-          }
-        ]);
-        setIsLoading(false);
-      }, 600);
+      const response = await fetch(`${API_BASE}/tickets`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to load requests');
+      }
+
+      setRequests(data.data || []);
     } catch (error) {
+      console.error('Fetch requests error:', error);
       showNotification('Failed to load requests', 'error');
+    } finally {
       setIsLoading(false);
     }
   };
@@ -120,44 +75,55 @@ export default function AppWithAuth() {
     fetchRequests();
   }, []);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.projectName || !formData.location) {
       showNotification('Please fill in required fields.', 'error');
       return;
     }
 
-    const newReq = {
-      id: Date.now(),
-      req_id: `REQ-${Math.floor(Date.now() / 1000).toString().slice(-6)}`,
-      request_type: formData.requestType,
-      project_name: formData.projectName,
-      requester_name: user.name,
-      empCode_created: user.empcode, // Use empCode from auth context
-      cost_center: user.cost_center,
-      device_type: formData.deviceType,
-      device_count: formData.deviceCount,
-      location: formData.location,
-      status: 'Pending',
-      priority: formData.priority,
-      target_date: formData.targetDate || new Date().toISOString().split('T')[0],
-      notes: formData.requirements,
-      created_at: new Date().toISOString()
-    };
+    try {
+      const response = await fetch(`${API_BASE}/tickets`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request_type: formData.requestType,
+          project_name: formData.projectName,
+          device_type: formData.deviceType,
+          device_count: formData.deviceCount,
+          location: formData.location,
+          priority: formData.priority,
+          target_date: formData.targetDate || new Date().toISOString(),
+          notes: formData.requirements
+        })
+      });
 
-    setRequests([newReq, ...requests]);
-    showNotification('Request submitted successfully!', 'success');
-    setIsModalOpen(false);
-    setFormData({
-      requestType: 'Hardware Setup',
-      projectName: '',
-      targetDate: '',
-      deviceType: 'Laptop (Windows)',
-      deviceCount: 1,
-      location: '',
-      priority: 'Normal',
-      requirements: ''
-    });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || data.message || 'Failed to submit request');
+      }
+
+      // Reload real list from DB after creation
+      await fetchRequests();
+      showNotification('Request submitted successfully!', 'success');
+      setIsModalOpen(false);
+      setFormData({
+        requestType: 'Hardware Setup',
+        projectName: '',
+        targetDate: '',
+        deviceType: 'Laptop (Windows)',
+        deviceCount: 1,
+        location: '',
+        priority: 'Normal',
+        requirements: ''
+      });
+    } catch (error) {
+      console.error('Create ticket error:', error);
+      showNotification(error.message || 'Failed to submit request', 'error');
+    }
   };
 
   const showNotification = (message, type) => {
@@ -254,8 +220,18 @@ export default function AppWithAuth() {
 
         {/* User Card - UPDATED with auth context */}
         <div className="mb-8 p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold text-lg">
-            {user?.name?.charAt(0) || 'U'}
+          <div className="w-14 h-14 rounded-full overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center">
+            {user?.empPic ? (
+              <img
+                src={user.empPic}
+                alt={`${user?.name || 'User'} profile`}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold text-lg">
+                {user?.name?.charAt(0) || 'U'}
+              </div>
+            )}
           </div>
           <div className="text-sm overflow-hidden flex-1">
             <p className="text-slate-900 font-semibold truncate">{user?.name || 'User'}</p>
