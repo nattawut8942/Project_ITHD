@@ -28,8 +28,9 @@ const transporter = nodemailer.createTransport({
 
     // Option 3: Custom SMTP Server (Daikin internal)
     host: process.env.SMTP_HOST || 'smtp.dci.daikin.co.jp',
-    port: process.env.SMTP_PORT || 587,
-    secure: process.env.SMTP_SECURE === 'true' ? true : false,
+    port: process.env.SMTP_PORT || 25, // Internal Daikin SMTP typically uses 25
+    secure: process.env.SMTP_SECURE === 'true',
+    ignoreTLS: true, // Fix for 454 4.7.0 TLS not available due to local problem
     auth: {
         user: process.env.EMAIL_USER || 'your-email@dci.daikin.co.jp',
         pass: process.env.EMAIL_PASSWORD || 'your-password'

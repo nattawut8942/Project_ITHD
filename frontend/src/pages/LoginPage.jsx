@@ -57,8 +57,8 @@ const LoginPage = () => {
                         alt="DAIKIN Logo"
                         className="h-12 mx-auto mb-5 object-contain"
                     />
-                    <h2 className="text-3xl font-black tracking-tight text-slate-950 leading-none">IT INVENTORY</h2>
-                    <p className="text-lg font-bold text-indigo-600 mt-2 tracking-wide">MANAGEMENT SYSTEM</p>
+                    <h2 className="text-3xl font-black tracking-tight text-slate-950 leading-none">IT HELP DESK</h2>
+                    <p className="text-lg font-bold text-indigo-600 mt-2 tracking-wide">SERVICE PORTAL</p>
                 </div>
                 
 
