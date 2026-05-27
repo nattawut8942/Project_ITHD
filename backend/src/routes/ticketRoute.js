@@ -1,5 +1,6 @@
 // backend/src/route/ticketRoute.js
 import express from 'express';
+import {
     getTickets,
     getTicketById,
     createTicket,
@@ -21,6 +22,9 @@ const router = express.Router();
 
 // GET all tickets (filtered by empCode for end users)
 router.get('/tickets', verifyToken, filterByEmpCode, getTickets);
+
+// GET all tickets for TV Monitor (Public)
+router.get('/tv/tickets', getTickets);
 
 // GET single ticket
 router.get('/tickets/:ticketId', verifyToken, filterByEmpCode, getTicketById);

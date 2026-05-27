@@ -10,33 +10,36 @@ import { sql, getPool } from '../config/db.js';
 /**
  * Log email sending to dbo.ithd_email_logs database
  */
-export const logEmail = async (ticketId, recipientEmail, action, subject, status, messageId = null, errorMsg = null) => {
-    try {
-        const pool = getPool();
-        
-        await pool.request()
-            .input('ticket_id', sql.Int, ticketId)
-            .input('recipient_email', sql.NVarChar, recipientEmail)
-            .input('action', sql.NVarChar, action)
-            .input('email_subject', sql.NVarChar, subject)
-            .input('status', sql.NVarChar, status) // 'Sent', 'Failed', 'Pending'
-            .input('message_id', sql.NVarChar, messageId || '')
-            .input('error_message', sql.NVarChar, errorMsg || '')
-            .query(`
-                INSERT INTO dbo.ithd_email_logs (
-                    ticket_id, recipient_email, action, email_subject,
-                    status, message_id, error_message, sent_at
-                ) VALUES (
-                    @ticket_id, @recipient_email, @action, @email_subject,
-                    @status, @message_id, @error_message, GETDATE()
-                )
-            `);
+export const logEmail = async (ticketId, email, type, subject, status, messageId, error) => {
+  try {
+    const pool = getPool();
+    
+    // เช็คก่อนว่า ticket ยังมีอยู่
+    const check = await pool.request()
+      .input('id', sql.Int, ticketId)
+      .query('SELECT id FROM dbo.ithd_tickets WHERE id = @id');
 
-        return { success: true };
-    } catch (error) {
-        console.error('Failed to log email:', error);
-        return { success: false, error: error.message };
+    if (check.recordset.length === 0) {
+      console.warn(`logEmail skipped: ticket ${ticketId} not found`);
+      return;
     }
+
+await pool.request()
+  .input('ticket_id',       sql.Int,      ticketId)
+  .input('recipient_email', sql.NVarChar, email)
+  .input('action',          sql.NVarChar, type)           // email_type → action
+  .input('email_subject',   sql.NVarChar, subject)        // subject → email_subject
+  .input('status',          sql.NVarChar, status)
+  .input('message_id',      sql.NVarChar, messageId || null)
+  .input('error_message',   sql.NVarChar, error || null)
+  .input('sent_at',         sql.DateTime, new Date())
+  .query(`INSERT INTO dbo.ithd_email_logs 
+    (ticket_id, recipient_email, action, email_subject, status, message_id, error_message, sent_at)
+    VALUES (@ticket_id, @recipient_email, @action, @email_subject, @status, @message_id, @error_message, @sent_at)`);
+
+  } catch (err) {
+    console.error('Failed to log email:', err.message);
+  }
 };
 
 /**

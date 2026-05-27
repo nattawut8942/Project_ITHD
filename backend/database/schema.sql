@@ -47,6 +47,7 @@ BEGIN
         notes NVARCHAR(MAX),
         created_at DATETIME DEFAULT GETDATE(),
         updated_at DATETIME DEFAULT GETDATE(),
+        accepted_at DATETIME,
         completed_at DATETIME,
         
         -- Foreign key to dbo.ithd_users

@@ -1,8 +1,34 @@
 // backend/src/utils/emailTemplates.js
 
+const formatThaiDateOnly = (value) => {
+    if (!value) return '';
+    return new Date(value).toLocaleDateString('th-TH', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        timeZone: 'Asia/Bangkok'
+    });
+};
+
+const formatThaiDateTime = (value) => {
+    const date = value ? new Date(value) : new Date();
+    return date.toLocaleString('th-TH', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+        timeZone: 'Asia/Bangkok'
+    });
+};
+
 /**
- * Email templates for IT Service Desk notifications
+ * Email templates for IT Help Desk notifications
  */
+
+const PORTAL_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 /**
  * Template: New Ticket Created
@@ -10,53 +36,53 @@
  */
 export const ticketCreatedTemplate = (ticket, userName) => {
     return {
-        subject: `[${ticket.req_id}] Ticket Created: ${ticket.project_name}`,
+        subject: `[${ticket.req_id}] สร้างเคสสำเร็จ: ${ticket.project_name}`,
         html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-                    <h1 style="margin: 0;">✓ Ticket Created Successfully</h1>
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px;">
+                    <h1 style="margin: 0; font-size: 20px;">✓ สร้างแจ้งซ่อมสำเร็จ</h1>
                 </div>
                 
-                <div style="background: #f5f5f5; padding: 20px;">
-                    <p>Hi ${userName},</p>
+                <div style="background: #f8fafc; padding: 20px;">
+                    <p style="color: #334155;">สวัสดีคุณ ${userName},</p>
                     
-                    <p>Your IT service request has been successfully created and is now in our queue for processing.</p>
+                    <p style="color: #334155;">ระบบได้รับแจ้งปัญหาของคุณเรียบร้อยแล้ว และกำลังรอดำเนินการโดยทีมงาน IT</p>
                     
-                    <div style="background: white; padding: 15px; border-left: 4px solid #667eea; margin: 20px 0;">
-                        <p><strong>Ticket Details:</strong></p>
-                        <table style="width: 100%; font-size: 14px;">
+                    <div style="background: white; padding: 20px; border-left: 4px solid #667eea; margin: 20px 0; border-radius: 0 8px 8px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <p style="margin-top: 0; color: #1e293b;"><strong>รายละเอียดเคส:</strong></p>
+                        <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Ticket ID:</strong></td>
-                                <td>${ticket.req_id}</td>
+                                <td style="padding: 8px 0; color: #64748b; width: 35%;"><strong>หมายเลขเคส:</strong></td>
+                                <td style="padding: 8px 0; color: #0f172a; font-weight: bold;">${ticket.req_id}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Request Type:</strong></td>
-                                <td>${ticket.request_type}</td>
+                                <td style="padding: 8px 0; color: #64748b;"><strong>ประเภทคำขอ:</strong></td>
+                                <td style="padding: 8px 0; color: #0f172a;">${ticket.problem_type_name || ticket.request_type}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Problem:</strong></td>
-                                <td>${ticket.project_name}</td>
+                                <td style="padding: 8px 0; color: #64748b;"><strong>ปัญหา:</strong></td>
+                                <td style="padding: 8px 0; color: #0f172a;">${ticket.project_name}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Location:</strong></td>
-                                <td>${ticket.location}</td>
+                                <td style="padding: 8px 0; color: #64748b;"><strong>สถานที่:</strong></td>
+                                <td style="padding: 8px 0; color: #0f172a;">${ticket.location}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Priority:</strong></td>
-                                <td>
-                                    <span style="background: ${getPriorityColor(ticket.priority)}; color: white; padding: 3px 8px; border-radius: 3px;">
+                                <td style="padding: 8px 0; color: #64748b;"><strong>ความเร่งด่วน:</strong></td>
+                                <td style="padding: 8px 0;">
+                                    <span style="background: ${getPriorityColor(ticket.priority)}; color: white; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: bold;">
                                         ${ticket.priority}
                                     </span>
                                 </td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Target Date:</strong></td>
-                                <td>${new Date(ticket.target_date).toLocaleDateString()}</td>
+                                <td style="padding: 8px 0; color: #64748b;"><strong>วันที่ต้องการ:</strong></td>
+                                <td style="padding: 8px 0; color: #0f172a;">${formatThaiDateOnly(ticket.target_date)}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Status:</strong></td>
-                                <td>
-                                    <span style="background: #ffc107; color: white; padding: 3px 8px; border-radius: 3px;">
+                                <td style="padding: 8px 0; color: #64748b;"><strong>สถานะ:</strong></td>
+                                <td style="padding: 8px 0;">
+                                    <span style="background: #f59e0b; color: white; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: bold;">
                                         ${ticket.status}
                                     </span>
                                 </td>
@@ -64,22 +90,21 @@ export const ticketCreatedTemplate = (ticket, userName) => {
                         </table>
                     </div>
 
-                    <p><strong>What happens next?</strong></p>
-                    <ul>
-                        <li>Our IT team will review your request</li>
-                        <li>You'll receive updates via email</li>
-                        <li>Check your dashboard for ticket status</li>
-                    </ul>
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="${PORTAL_URL}/?view=all" style="background: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                            ตรวจสอบสถานะเคสของคุณ
+                        </a>
+                    </div>
 
-                    <p style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; color: #999; font-size: 12px;">
-                        <strong>Reference ID:</strong> ${ticket.req_id}<br>
-                        <strong>Created:</strong> ${new Date(ticket.created_at).toLocaleString()}<br>
-                        Do not reply to this email. Use the IT Service Desk portal instead.
+                    <p style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 12px;">
+                        <strong>รหัสอ้างอิง:</strong> ${ticket.req_id}<br>
+                        <strong>วันที่สร้าง:</strong> ${formatThaiDateTime(ticket.created_at)}<br>
+                        อีเมลฉบับนี้ส่งจากระบบอัตโนมัติ กรุณาอย่าตอบกลับ
                     </p>
                 </div>
 
-                <div style="background: #333; color: white; padding: 20px; text-align: center; border-radius: 0 0 8px 8px; font-size: 12px;">
-                    <p style="margin: 0;">IT Service Desk | Daikin Thailand</p>
+                <div style="background: #1e293b; color: #cbd5e1; padding: 20px; text-align: center; font-size: 12px;">
+                    <p style="margin: 0;">IT Help Desk | Daikin Thailand</p>
                     <p style="margin: 0;">© 2026 All Rights Reserved</p>
                 </div>
             </div>
@@ -100,66 +125,68 @@ export const ticketUpdatedTemplate = (ticket, userName, changeDetails) => {
     };
 
     return {
-        subject: `[${ticket.req_id}] Status Update: ${ticket.project_name}`,
+        subject: `[${ticket.req_id}] อัปเดตสถานะ: ${ticket.project_name}`,
         html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-                    <h1 style="margin: 0;">📢 Ticket Status Updated</h1>
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; padding: 20px;">
+                    <h1 style="margin: 0; font-size: 20px;">📢 มีการอัปเดตสถานะเคสของคุณ</h1>
                 </div>
                 
-                <div style="background: #f5f5f5; padding: 20px;">
-                    <p>Hi ${userName},</p>
+                <div style="background: #f8fafc; padding: 20px;">
+                    <p style="color: #334155;">สวัสดีคุณ ${userName},</p>
                     
-                    <p>Your IT service ticket has been updated. Please see the details below.</p>
+                    <p style="color: #334155;">เคสแจ้งปัญหา IT ของคุณมีการอัปเดตสถานะ โปรดดูรายละเอียดด้านล่าง</p>
                     
-                    <div style="background: white; padding: 15px; border-left: 4px solid #667eea; margin: 20px 0;">
-                        <p><strong>Ticket Update:</strong></p>
-                        <table style="width: 100%; font-size: 14px;">
+                    <div style="background: white; padding: 20px; border-left: 4px solid #3b82f6; margin: 20px 0; border-radius: 0 8px 8px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <p style="margin-top: 0; color: #1e293b;"><strong>ข้อมูลการอัปเดต:</strong></p>
+                        <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Ticket ID:</strong></td>
-                                <td>${ticket.req_id}</td>
+                                <td style="padding: 8px 0; color: #64748b; width: 35%;"><strong>หมายเลขเคส:</strong></td>
+                                <td style="padding: 8px 0; color: #0f172a; font-weight: bold;">${ticket.req_id}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Problem:</strong></td>
-                                <td>${ticket.project_name}</td>
+                                <td style="padding: 8px 0; color: #64748b;"><strong>ปัญหา:</strong></td>
+                                <td style="padding: 8px 0; color: #0f172a;">${ticket.project_name}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>New Status:</strong></td>
-                                <td>
-                                    <span style="background: ${statusColors[ticket.status] || '#999'}; color: white; padding: 5px 10px; border-radius: 3px; font-weight: bold;">
+                                <td style="padding: 8px 0; color: #64748b;"><strong>สถานะใหม่:</strong></td>
+                                <td style="padding: 8px 0;">
+                                    <span style="background: ${statusColors[ticket.status] || '#94a3b8'}; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 12px;">
                                         ${ticket.status}
                                     </span>
                                 </td>
                             </tr>
                             ${changeDetails ? `
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Changes:</strong></td>
-                                <td>${changeDetails}</td>
+                                <td style="padding: 8px 0; color: #64748b;"><strong>รายละเอียดที่เปลี่ยน:</strong></td>
+                                <td style="padding: 8px 0; color: #0f172a;">${changeDetails}</td>
                             </tr>
                             ` : ''}
-                            <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Updated:</strong></td>
-                                <td>${new Date().toLocaleString()}</td>
-                            </tr>
                         </table>
                     </div>
 
                     ${ticket.notes ? `
-                    <div style="background: #e8f4f8; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                        <p><strong>Notes from IT Team:</strong></p>
-                        <p style="margin: 0; color: #333;">${ticket.notes}</p>
+                    <div style="background: #f0fdf4; padding: 15px; border-left: 4px solid #22c55e; border-radius: 0 8px 8px 0; margin: 20px 0;">
+                        <p style="margin-top: 0; color: #166534; font-weight: bold;">บันทึกจากทีมงาน IT (Notes):</p>
+                        <p style="margin: 0; color: #15803d;">${ticket.notes}</p>
                     </div>
                     ` : ''}
 
-                    <p style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; color: #999; font-size: 12px;">
-                        <strong>Reference ID:</strong> ${ticket.req_id}<br>
-                        <strong>Updated:</strong> ${new Date().toLocaleString()}<br>
-                        Do not reply to this email. Use the IT Service Desk portal instead.
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="${PORTAL_URL}/?view=all" style="background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                            ดูรายละเอียดทั้งหมด
+                        </a>
+                    </div>
+
+                    <p style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 12px;">
+                        <strong>รหัสอ้างอิง:</strong> ${ticket.req_id}<br>
+                        <strong>อัปเดตเมื่อ:</strong> ${formatThaiDateTime()}<br>
+                        อีเมลฉบับนี้ส่งจากระบบอัตโนมัติ กรุณาอย่าตอบกลับ
                     </p>
                 </div>
 
-                <div style="background: #333; color: white; padding: 20px; text-align: center; border-radius: 0 0 8px 8px; font-size: 12px;">
-                    <p style="margin: 0;">IT Service Desk | Daikin Thailand</p>
+                <div style="background: #1e293b; color: #cbd5e1; padding: 20px; text-align: center; font-size: 12px;">
+                    <p style="margin: 0;">IT Help Desk | Daikin Thailand</p>
                     <p style="margin: 0;">© 2026 All Rights Reserved</p>
                 </div>
             </div>
@@ -173,30 +200,37 @@ export const ticketUpdatedTemplate = (ticket, userName, changeDetails) => {
  */
 export const ticketCommentTemplate = (ticket, author, comment) => {
     return {
-        subject: `[${ticket.req_id}] New Comment on Your Ticket`,
+        subject: `[${ticket.req_id}] มีข้อความใหม่ในเคสของคุณ`,
         html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-                    <h1 style="margin: 0;">💬 New Comment Added</h1>
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); color: white; padding: 20px;">
+                    <h1 style="margin: 0; font-size: 20px;">💬 มีข้อความใหม่ (Comment)</h1>
                 </div>
                 
-                <div style="background: #f5f5f5; padding: 20px;">
-                    <p>Hi ${ticket.requester_name || 'there'},</p>
-                    <p>${author} has added a comment to your ticket.</p>
-                    <div style="background: white; padding: 15px; border-left: 4px solid #667eea; margin: 20px 0;">
-                        <p><strong>Ticket ID:</strong> ${ticket.req_id}</p>
-                        <p><strong>Problem:</strong> ${ticket.project_name}</p>
-                        <p><strong>Comment:</strong></p>
-                        <div style="background: #f1f5f9; padding: 12px; border-radius: 6px; color: #111; line-height: 1.6;">${comment}</div>
+                <div style="background: #f8fafc; padding: 20px;">
+                    <p style="color: #334155;">สวัสดีคุณ ${ticket.requester_name || 'ผู้แจ้ง'},</p>
+                    <p style="color: #334155;"><strong>${author}</strong> ได้เพิ่มข้อความใหม่ในเคสของคุณ</p>
+                    <div style="background: white; padding: 20px; border-left: 4px solid #8b5cf6; margin: 20px 0; border-radius: 0 8px 8px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <p style="margin-top: 0; color: #64748b;"><strong>หมายเลขเคส:</strong> <span style="color: #0f172a;">${ticket.req_id}</span></p>
+                        <p style="color: #64748b;"><strong>ปัญหา:</strong> <span style="color: #0f172a;">${ticket.project_name}</span></p>
+                        <p style="color: #64748b;"><strong>ข้อความ:</strong></p>
+                        <div style="background: #f1f5f9; padding: 15px; border-radius: 6px; color: #334155; line-height: 1.6;">${comment}</div>
                     </div>
-                    <p style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; color: #999; font-size: 12px;">
-                        <strong>Reference ID:</strong> ${ticket.req_id}<br>
-                        <strong>Updated:</strong> ${new Date().toLocaleString()}<br>
-                        Do not reply to this email. Use the IT Service Desk portal instead.
+                    
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="${PORTAL_URL}/?view=all" style="background: #8b5cf6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                            ตอบกลับในระบบ
+                        </a>
+                    </div>
+
+                    <p style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 12px;">
+                        <strong>รหัสอ้างอิง:</strong> ${ticket.req_id}<br>
+                        <strong>อัปเดตเมื่อ:</strong> ${formatThaiDateTime()}<br>
+                        อีเมลฉบับนี้ส่งจากระบบอัตโนมัติ กรุณาอย่าตอบกลับ
                     </p>
                 </div>
-                <div style="background: #333; color: white; padding: 20px; text-align: center; border-radius: 0 0 8px 8px; font-size: 12px;">
-                    <p style="margin: 0;">IT Service Desk | Daikin Thailand</p>
+                <div style="background: #1e293b; color: #cbd5e1; padding: 20px; text-align: center; font-size: 12px;">
+                    <p style="margin: 0;">IT Help Desk | Daikin Thailand</p>
                     <p style="margin: 0;">© 2026 All Rights Reserved</p>
                 </div>
             </div>
@@ -210,72 +244,78 @@ export const ticketCommentTemplate = (ticket, author, comment) => {
  */
 export const ticketAssignedTemplate = (ticket, staffName) => {
     return {
-        subject: `[${ticket.req_id}] New Ticket Assigned to You`,
+        subject: `[${ticket.req_id}] มีเคสใหม่มอบหมายให้คุณ`,
         html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-                    <h1 style="margin: 0;">🎯 New Ticket Assigned</h1>
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 20px;">
+                    <h1 style="margin: 0; font-size: 20px;">🎯 เคสใหม่ถูกมอบหมายให้คุณ</h1>
                 </div>
                 
-                <div style="background: #f5f5f5; padding: 20px;">
-                    <p>Hi ${staffName},</p>
+                <div style="background: #f8fafc; padding: 20px;">
+                    <p style="color: #334155;">สวัสดีคุณ ${staffName},</p>
                     
-                    <p>A new ticket has been assigned to you. Please review and take action as needed.</p>
+                    <p style="color: #334155;">มีงานแจ้งซ่อม IT ใหม่ถูกจ่ายงานมาที่คุณ กรุณาตรวจสอบและดำเนินการ</p>
                     
-                    <div style="background: white; padding: 15px; border-left: 4px solid #f5576c; margin: 20px 0;">
-                        <p><strong>Ticket Details:</strong></p>
-                        <table style="width: 100%; font-size: 14px;">
+                    <div style="background: white; padding: 20px; border-left: 4px solid #f59e0b; margin: 20px 0; border-radius: 0 8px 8px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <p style="margin-top: 0; color: #1e293b;"><strong>รายละเอียดเคส:</strong></p>
+                        <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Ticket ID:</strong></td>
-                                <td>${ticket.req_id}</td>
+                                <td style="padding: 8px 0; color: #64748b; width: 35%;"><strong>หมายเลขเคส:</strong></td>
+                                <td style="padding: 8px 0; color: #0f172a; font-weight: bold;">${ticket.req_id}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Request Type:</strong></td>
-                                <td>${ticket.request_type}</td>
+                                <td style="padding: 8px 0; color: #64748b;"><strong>ผู้แจ้ง:</strong></td>
+                                <td style="padding: 8px 0; color: #0f172a;">${ticket.requester_name}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Requester:</strong></td>
-                                <td>${ticket.requester_name}</td>
+                                <td style="padding: 8px 0; color: #64748b;"><strong>ประเภทคำขอ:</strong></td>
+                                <td style="padding: 8px 0; color: #0f172a;">${ticket.problem_type_name || ticket.request_type}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Problem:</strong></td>
-                                <td>${ticket.project_name}</td>
+                                <td style="padding: 8px 0; color: #64748b;"><strong>ปัญหา:</strong></td>
+                                <td style="padding: 8px 0; color: #0f172a;">${ticket.project_name}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Location:</strong></td>
-                                <td>${ticket.location}</td>
+                                <td style="padding: 8px 0; color: #64748b;"><strong>สถานที่:</strong></td>
+                                <td style="padding: 8px 0; color: #0f172a;">${ticket.location}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Priority:</strong></td>
-                                <td>
-                                    <span style="background: ${getPriorityColor(ticket.priority)}; color: white; padding: 3px 8px; border-radius: 3px; font-weight: bold;">
+                                <td style="padding: 8px 0; color: #64748b;"><strong>ความเร่งด่วน:</strong></td>
+                                <td style="padding: 8px 0;">
+                                    <span style="background: ${getPriorityColor(ticket.priority)}; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 12px;">
                                         ${ticket.priority}
                                     </span>
                                 </td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Target Date:</strong></td>
-                                <td>${new Date(ticket.target_date).toLocaleDateString()}</td>
+                                <td style="padding: 8px 0; color: #64748b;"><strong>วันที่ต้องการ:</strong></td>
+                                <td style="padding: 8px 0; color: #0f172a;">${formatThaiDateOnly(ticket.target_date)}</td>
                             </tr>
                         </table>
                     </div>
 
                     ${ticket.notes ? `
-                    <div style="background: #e8f4f8; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                        <p><strong>Requester Notes:</strong></p>
-                        <p style="margin: 0; color: #333;">${ticket.notes}</p>
+                    <div style="background: #fffbeb; padding: 15px; border-left: 4px solid #f59e0b; border-radius: 0 8px 8px 0; margin: 20px 0;">
+                        <p style="margin-top: 0; color: #b45309; font-weight: bold;">บันทึก/รายละเอียดเพิ่มเติม:</p>
+                        <p style="margin: 0; color: #92400e;">${ticket.notes}</p>
                     </div>
                     ` : ''}
 
-                    <p style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; color: #999; font-size: 12px;">
-                        <strong>Reference ID:</strong> ${ticket.req_id}<br>
-                        <strong>Assigned:</strong> ${new Date().toLocaleString()}<br>
-                        Do not reply to this email. Use the IT Service Desk portal instead.
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="${PORTAL_URL}/?view=all" style="background: #f59e0b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                            เข้าสู่ระบบเพื่อรับเคส
+                        </a>
+                    </div>
+
+                    <p style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 12px;">
+                        <strong>รหัสอ้างอิง:</strong> ${ticket.req_id}<br>
+                        <strong>มอบหมายเมื่อ:</strong> ${formatThaiDateTime()}<br>
+                        อีเมลฉบับนี้ส่งจากระบบอัตโนมัติ กรุณาอย่าตอบกลับ
                     </p>
                 </div>
 
-                <div style="background: #333; color: white; padding: 20px; text-align: center; border-radius: 0 0 8px 8px; font-size: 12px;">
-                    <p style="margin: 0;">IT Service Desk | Daikin Thailand</p>
+                <div style="background: #1e293b; color: #cbd5e1; padding: 20px; text-align: center; font-size: 12px;">
+                    <p style="margin: 0;">IT Help Desk | Daikin Thailand</p>
                     <p style="margin: 0;">© 2026 All Rights Reserved</p>
                 </div>
             </div>
@@ -289,62 +329,80 @@ export const ticketAssignedTemplate = (ticket, staffName) => {
  */
 export const ticketCompletedTemplate = (ticket, userName) => {
     return {
-        subject: `[${ticket.req_id}] COMPLETED: ${ticket.project_name}`,
+        subject: `[${ticket.req_id}] ปิดเคสสำเร็จ (COMPLETED): ${ticket.project_name}`,
         html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-                    <h1 style="margin: 0;">✅ Your Request Completed!</h1>
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 20px;">
+                    <h1 style="margin: 0; font-size: 20px;">✅ แก้ไขปัญหาเสร็จสิ้น</h1>
                 </div>
                 
-                <div style="background: #f5f5f5; padding: 20px;">
-                    <p>Hi ${userName},</p>
+                <div style="background: #f8fafc; padding: 20px;">
+                    <p style="color: #334155;">สวัสดีคุณ ${userName},</p>
                     
-                    <p>Great news! Your IT service request has been successfully completed by our team.</p>
+                    <p style="color: #334155;">ทีมงาน IT ได้ดำเนินการแก้ไขปัญหาของคุณเรียบร้อยแล้ว และทำการปิดเคส</p>
                     
-                    <div style="background: white; padding: 15px; border-left: 4px solid #38ef7d; margin: 20px 0;">
-                        <p><strong>Completed Details:</strong></p>
-                        <table style="width: 100%; font-size: 14px;">
+                    <div style="background: white; padding: 20px; border-left: 4px solid #10b981; margin: 20px 0; border-radius: 0 8px 8px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                        <p style="margin-top: 0; color: #1e293b;"><strong>ข้อมูลการปิดเคส:</strong></p>
+                        <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Ticket ID:</strong></td>
-                                <td>${ticket.req_id}</td>
+                                <td style="padding: 8px 0; color: #64748b; width: 35%;"><strong>หมายเลขเคส:</strong></td>
+                                <td style="padding: 8px 0; color: #0f172a; font-weight: bold;">${ticket.req_id}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Problem:</strong></td>
-                                <td>${ticket.project_name}</td>
+                                <td style="padding: 8px 0; color: #64748b;"><strong>ปัญหาที่แจ้ง:</strong></td>
+                                <td style="padding: 8px 0; color: #0f172a;">${ticket.project_name}</td>
                             </tr>
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Status:</strong></td>
-                                <td>
-                                    <span style="background: #28a745; color: white; padding: 5px 10px; border-radius: 3px; font-weight: bold;">
-                                        COMPLETED
+                                <td style="padding: 8px 0; color: #64748b;"><strong>สถานะ:</strong></td>
+                                <td style="padding: 8px 0;">
+                                    <span style="background: #10b981; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 12px;">
+                                        เสร็จสิ้น (COMPLETED)
                                     </span>
                                 </td>
                             </tr>
+                            ${ticket.root_cause ? `
                             <tr>
-                                <td style="padding: 5px; color: #666;"><strong>Completed:</strong></td>
-                                <td>${new Date().toLocaleString()}</td>
+                                <td style="padding: 8px 0; color: #64748b; vertical-align: top;"><strong>สาเหตุของปัญหา:</strong></td>
+                                <td style="padding: 8px 0; color: #b45309; font-weight: 500;">${ticket.root_cause}</td>
+                            </tr>
+                            ` : ''}
+                            ${ticket.solution ? `
+                            <tr>
+                                <td style="padding: 8px 0; color: #64748b; vertical-align: top;"><strong>วิธีการแก้ไข:</strong></td>
+                                <td style="padding: 8px 0; color: #15803d; font-weight: 500;">${ticket.solution}</td>
+                            </tr>
+                            ` : ''}
+                            <tr>
+                                <td style="padding: 8px 0; color: #64748b;"><strong>วันที่ปิดเคส:</strong></td>
+                                <td style="padding: 8px 0; color: #0f172a;">${formatThaiDateTime(ticket.completed_at || undefined)}</td>
                             </tr>
                         </table>
                     </div>
 
                     ${ticket.notes ? `
-                    <div style="background: #e8f4f8; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                        <p><strong>Final Notes:</strong></p>
-                        <p style="margin: 0; color: #333;">${ticket.notes}</p>
+                    <div style="background: #f0fdf4; padding: 15px; border-left: 4px solid #22c55e; border-radius: 0 8px 8px 0; margin: 20px 0;">
+                        <p style="margin-top: 0; color: #166534; font-weight: bold;">บันทึกส่งท้าย (Notes):</p>
+                        <p style="margin: 0; color: #15803d;">${ticket.notes}</p>
                     </div>
                     ` : ''}
 
-                    <p style="margin-top: 20px;">If you need any additional support, please don't hesitate to contact us!</p>
+                    <p style="margin-top: 20px; color: #334155;">หากคุณพบปัญหาเพิ่มเติมหรือต้องการความช่วยเหลืออื่นๆ สามารถแจ้งเคสใหม่ผ่านระบบได้เสมอ</p>
 
-                    <p style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; color: #999; font-size: 12px;">
-                        <strong>Reference ID:</strong> ${ticket.req_id}<br>
-                        <strong>Completed:</strong> ${new Date().toLocaleString()}<br>
-                        Do not reply to this email. Use the IT Service Desk portal instead.
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="${PORTAL_URL}/?view=all" style="background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                            ประเมินความพึงพอใจ / ดูประวัติ
+                        </a>
+                    </div>
+
+                    <p style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 12px;">
+                        <strong>รหัสอ้างอิง:</strong> ${ticket.req_id}<br>
+                        <strong>ปิดเคสเมื่อ:</strong> ${formatThaiDateTime(ticket.completed_at || undefined)}<br>
+                        อีเมลฉบับนี้ส่งจากระบบอัตโนมัติ กรุณาอย่าตอบกลับ
                     </p>
                 </div>
 
-                <div style="background: #333; color: white; padding: 20px; text-align: center; border-radius: 0 0 8px 8px; font-size: 12px;">
-                    <p style="margin: 0;">IT Service Desk | Daikin Thailand</p>
+                <div style="background: #1e293b; color: #cbd5e1; padding: 20px; text-align: center; font-size: 12px;">
+                    <p style="margin: 0;">IT Help Desk | Daikin Thailand</p>
                     <p style="margin: 0;">© 2026 All Rights Reserved</p>
                 </div>
             </div>

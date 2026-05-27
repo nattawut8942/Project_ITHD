@@ -1,31 +1,34 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Computer, LogOut } from 'lucide-react';
 import { ticketAPI } from '../utils/apiClient';
+import Sidebar from '../components/Sidebar';
+import {
+  Computer, LogOut, Monitor, LayoutDashboard, Plus, Clock,
+  CheckCircle, MapPin, X, User, Search, ChevronRight,
+  Paperclip, AlertCircle, Laptop, Wrench, Grid, List, ArrowRight
+} from 'lucide-react';
+import { getDeviceTypeColor, getColorGradient } from '../utils/styleHelpers';
+import OpenTicketModal from '../components/OpenTicketModal';
+import TicketDetailModal from '../components/TicketDetailModal';
+import { API_BASE } from '../config/api';
+import { useLocation, useNavigate } from 'react-router-dom';
 
-// --- Inline SVG Icons (Expanded for Modern UI) ---
-const IconMonitor = ({ className = "w-6 h-6" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>;
-const IconLayoutDashboard = ({ className = "w-6 h-6" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>;
-const IconSettings = ({ className = "w-6 h-6" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>;
-const IconPlus = ({ className = "w-6 h-6" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>;
-const IconClock = ({ className = "w-6 h-6" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
-const IconCheckCircle = ({ className = "w-6 h-6" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>;
-const IconMapPin = ({ className = "w-6 h-6" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>;
-const IconX = ({ className = "w-6 h-6" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>;
-const IconUser = ({ className = "w-6 h-6" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
-const IconSearch = ({ className = "w-6 h-6" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>;
-const IconChevronRight = ({ className = "w-6 h-6" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m9 18 6-6-6-6"/></svg>;
-const IconPaperclip = ({ className = "w-6 h-6" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>;
-const IconAlertCircle = ({ className = "w-6 h-6" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>;
-const IconLaptop = ({ className = "w-6 h-6" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"/></svg>;
-const IconWrench = ({ className = "w-6 h-6" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>;
+const Chip = ({ label, onRemove }) => (
+  <span className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-full text-xs font-bold">
+    {label}
+    <button onClick={onRemove} className="hover:text-indigo-900 transition-colors">×</button>
+  </span>
+);
 
 export default function ITServiceDesk() {
   const { user, logout } = useAuth();
-  
+  const navigate = useNavigate();
+  const location = useLocation();
+  const currentView = new URLSearchParams(location.search).get('view') || 'all';
+
   const [requests, setRequests] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedTicket, setSelectedTicket] = useState(null); // For Drawer (Slide-over)
+  const [selectedTicket, setSelectedTicket] = useState(null);
   const [commentModalOpen, setCommentModalOpen] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [commentMode, setCommentMode] = useState('comment');
@@ -33,20 +36,73 @@ export default function ITServiceDesk() {
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [notification, setNotification] = useState(null);
-  const [currentView, setCurrentView] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  
-  // Timeline / Comment states
+
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterPriority, setFilterPriority] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [filterAssignee, setFilterAssignee] = useState('');
+  const [filterDate, setFilterDate] = useState('');
+  const [showFilter, setShowFilter] = useState(false);
+
+  // Sort states
+  const [sortField, setSortField] = useState('created_at');
+  const [sortDir, setSortDir] = useState('desc');
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 15;
+
+  const [rootCause, setRootCause] = useState('');
+  const [solution, setSolution] = useState('');
+
   const [ticketHistory, setTicketHistory] = useState([]);
-  const [commentText, setCommentText] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+
+  // Layout Mode state (Grid / List)
+  const [layoutMode, setLayoutMode] = useState('list');
 
   const [formData, setFormData] = useState({
     requestType: 'Hardware Setup', projectName: '', targetDate: '', deviceType: 'Notebook (Windows)', deviceCount: 1, location: '', priority: 'Normal', requirements: ''
   });
 
-  // Check if user is IT Staff (CC 7510)
   const isITStaff = user?.cost_center === '7510';
+
+  const formatDateShort = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  const formatThaiDateTime = (value) => {
+    if (!value) return '';
+    return new Date(value).toLocaleString('th-TH', {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok'
+    });
+  };
+
+  const formatElapsedTime = (start, end) => {
+    if (!start || !end) return '-';
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return '-';
+    const diffMs = endDate - startDate;
+    if (diffMs <= 0) return '-';
+    const totalMinutes = Math.floor(diffMs / 60000);
+    
+    if (totalMinutes >= 60) {
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      return `${hours}.${minutes.toString().padStart(2, '0')} hrs`;
+    }
+    
+    return `${totalMinutes} นาที`;
+  };
 
   const fetchRequests = async () => {
     setIsLoading(true);
@@ -62,26 +118,20 @@ export default function ITServiceDesk() {
     }
   };
 
-  useEffect(() => { 
-    fetchRequests(); 
+  useEffect(() => {
+    fetchRequests();
   }, []);
 
   useEffect(() => {
-    if (selectedTicket) {
-      fetchTicketHistory(selectedTicket.id);
-    } else {
-      setTicketHistory([]);
-      setCommentText('');
-    }
+    if (selectedTicket) fetchTicketHistory(selectedTicket.id);
+    else { setTicketHistory([]); setCommentText(''); }
   }, [selectedTicket]);
 
   const fetchTicketHistory = async (id) => {
     try {
       const response = await ticketAPI.getTicketHistory(id);
       setTicketHistory(response.data.data || []);
-    } catch (error) {
-      console.error('Failed to fetch history:', error);
-    }
+    } catch (error) { console.error('Failed to fetch history:', error); }
   };
 
   const handleAddComment = async () => {
@@ -93,11 +143,8 @@ export default function ITServiceDesk() {
       fetchTicketHistory(selectedTicket.id);
       showNotification('Comment added successfully', 'success');
     } catch (error) {
-      console.error('Add comment error:', error);
       showNotification('Failed to add comment', 'error');
-    } finally {
-      setIsSubmittingComment(false);
-    }
+    } finally { setIsSubmittingComment(false); }
   };
 
   const handleSubmit = async (e) => {
@@ -106,29 +153,23 @@ export default function ITServiceDesk() {
       showNotification('Please fill in required fields.', 'error');
       return;
     }
-
     try {
       const ticketPayload = {
         request_type: formData.requestType,
         project_name: formData.projectName,
         device_type: formData.deviceType,
-        device_count: parseInt(formData.deviceCount, 10) || 1, // Fixed type for mssql
+        device_count: parseInt(formData.deviceCount, 10) || 1,
         location: formData.location,
         priority: formData.priority,
         target_date: formData.targetDate || new Date().toISOString().split('T')[0],
         notes: formData.requirements
       };
-
       await ticketAPI.createTicket(ticketPayload);
-      
       showNotification('Request submitted successfully!', 'success');
       setIsModalOpen(false);
       setFormData({ requestType: 'Hardware Setup', projectName: '', targetDate: '', deviceType: 'Notebook (Windows)', deviceCount: 1, location: '', priority: 'Normal', requirements: '' });
-      
-      // Refresh the list with actual data from DB
       fetchRequests();
     } catch (error) {
-      console.error('Submit error:', error);
       showNotification('Failed to submit request to database', 'error');
     }
   };
@@ -136,11 +177,6 @@ export default function ITServiceDesk() {
   const showNotification = (message, type) => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 3000);
-  };
-
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const openConfirm = ({ title, message, confirmLabel = 'Confirm', onConfirm }) => {
@@ -151,728 +187,815 @@ export default function ITServiceDesk() {
 
   const executePendingAction = async () => {
     if (!pendingAction?.onConfirm) return;
-    try {
-      await pendingAction.onConfirm();
-    } catch (error) {
-      console.error(error);
-      showNotification('ไม่สามารถดำเนินการได้', 'error');
-    } finally {
-      closeConfirm();
-    }
+    try { await pendingAction.onConfirm(); }
+    catch (error) { showNotification('ไม่สามารถดำเนินการได้', 'error'); }
+    finally { closeConfirm(); }
   };
 
   const fetchTicketDetails = async (ticketId) => {
     setIsDetailLoading(true);
     try {
       const response = await ticketAPI.getTicket(ticketId);
-      const ticket = response.data.data || response.data;
-      setSelectedTicket(ticket);
+      setSelectedTicket(response.data.data || response.data);
     } catch (error) {
-      console.error('Fetch detail error:', error);
       showNotification('Failed to load ticket details', 'error');
-    } finally {
-      setIsDetailLoading(false);
-    }
+    } finally { setIsDetailLoading(false); }
   };
 
   const handleSaveComment = async () => {
-    if (!commentText.trim()) {
-      showNotification('Please enter a comment before saving.', 'error');
+    if (commentMode === 'close' && (!rootCause.trim() || !solution.trim())) {
+      showNotification('กรุณาระบุสาเหตุและวิธีแก้ก่อนปิดเคส', 'error');
       return;
     }
-
-    const updatePayload = commentMode === 'reject'
-      ? { status: 'Rejected', comment: commentText }
-      : { comment: commentText };
+    if (commentMode === 'reject' && !commentText.trim()) {
+      showNotification('กรุณาระบุเหตุผลในการปฏิเสธเคส', 'error');
+      return;
+    }
+    const updatePayload = commentMode === 'reject' ? { status: 'Rejected', comment: commentText }
+      : commentMode === 'close' ? { status: 'Completed', root_cause: rootCause, solution: solution, comment: commentText || undefined }
+        : { comment: commentText };
 
     try {
       await ticketAPI.updateTicket(selectedTicket.id, updatePayload);
-      showNotification(commentMode === 'reject' ? 'Ticket rejected with reason' : 'Comment added', 'success');
-      setCommentModalOpen(false);
-      setCommentText('');
-      setCommentMode('comment');
-      await fetchTicketDetails(selectedTicket.id);
-      fetchRequests();
-    } catch (err) {
-      console.error(err);
-      showNotification('Failed to save comment', 'error');
-    }
+      showNotification(commentMode === 'close' ? 'ปิดเคสสำเร็จ' : commentMode === 'reject' ? 'Ticket rejected' : 'Comment added', 'success');
+      setCommentModalOpen(false); setCommentText(''); setRootCause(''); setSolution('');
+      setCommentMode('comment'); setSelectedTicket(null); fetchRequests();
+    } catch (err) { showNotification('Failed to save', 'error'); }
   };
 
   const openCommentModal = (mode = 'comment') => {
-    setCommentMode(mode);
-    setCommentText('');
-    setCommentModalOpen(true);
+    setCommentMode(mode); setCommentText(''); setCommentModalOpen(true);
   };
 
   const handleAcceptTicket = async () => {
     try {
       await ticketAPI.updateTicket(selectedTicket.id, {
-        status: 'In Progress',
-        empCode_assigned: user?.empcode,
+        status: 'In Progress', empCode_assigned: user?.empcode,
         notes: (selectedTicket.notes || '') + `\n\n[Action] รับเคสโดย ${user?.name || 'IT Staff'}`
       });
       showNotification('รับเคสเรียบร้อย', 'success');
-      setSelectedTicket(null);
-      fetchRequests();
-    } catch (err) {
-      console.error(err);
-      showNotification('ไม่สามารถรับเคสได้', 'error');
-    }
-  };
-
-  const handleCompleteTicket = async () => {
-    try {
-      await ticketAPI.updateTicket(selectedTicket.id, {
-        status: 'Completed',
-        notes: (selectedTicket.notes || '') + `\n\n[Action] ปิดเคสโดย ${user?.name || 'IT Admin'}`
-      });
-      showNotification('ปิดเคสสำเร็จ', 'success');
-      setSelectedTicket(null);
-      fetchRequests();
-    } catch (err) {
-      console.error(err);
-      showNotification('ไม่สามารถปิดเคสได้', 'error');
-    }
+      setSelectedTicket(null); fetchRequests();
+    } catch (err) { showNotification('ไม่สามารถรับเคสได้', 'error'); }
   };
 
   const handleDeleteTicket = async () => {
     try {
       await ticketAPI.deleteTicket(selectedTicket.id);
       showNotification('Ticket deleted', 'success');
-      setSelectedTicket(null);
-      fetchRequests();
-    } catch (err) {
-      console.error(err);
-      showNotification('Failed to delete ticket', 'error');
-    }
+      setSelectedTicket(null); fetchRequests();
+    } catch (err) { showNotification('Failed to delete ticket', 'error'); }
+  };
+
+  const handleCancelTicket = async () => {
+    try {
+      await ticketAPI.updateTicket(selectedTicket.id, { status: 'Cancelled', comment: 'ยกเลิกโดยผู้แจ้ง' });
+      showNotification('ยกเลิก Ticket เรียบร้อย', 'success');
+      setSelectedTicket(null); fetchRequests();
+    } catch (err) { showNotification('ไม่สามารถยกเลิก Ticket ได้', 'error'); }
   };
 
   const filteredRequests = useMemo(() => {
     let result = requests;
 
-    if (currentView === 'mine') {
-      result = result.filter(r => r.empCode_created === user?.empcode);
-    }
+    // View filter
+    if (currentView === 'mine') result = result.filter(r => r.empCode_created === user?.empcode);
 
+    // Search
     if (searchQuery) {
-      const lowerQuery = searchQuery.toLowerCase();
-      result = result.filter(r => 
-        r.project_name.toLowerCase().includes(lowerQuery) || 
-        r.req_id.toLowerCase().includes(lowerQuery) ||
-        r.location.toLowerCase().includes(lowerQuery)
+      const q = searchQuery.toLowerCase();
+      result = result.filter(r =>
+        r.project_name?.toLowerCase().includes(q) ||
+        r.req_id?.toLowerCase().includes(q) ||
+        r.location?.toLowerCase().includes(q) ||
+        r.requester_name?.toLowerCase().includes(q)
       );
     }
-    return result;
-  }, [requests, currentView, searchQuery, user?.empcode]);
 
-  const stats = {
-    total: filteredRequests.length,
-    pending: filteredRequests.filter(r => r.status === 'Pending').length,
-    completed: filteredRequests.filter(r => r.status === 'Completed').length,
-    rejected: filteredRequests.filter(r => r.status === 'Rejected').length,
-  };
+    // Filters
+    if (filterStatus) result = result.filter(r => r.status === filterStatus);
+    if (filterPriority) result = result.filter(r => r.priority === filterPriority);
+    if (filterType) result = result.filter(r => (r.problem_type_name || r.request_type) === filterType);
+    if (filterAssignee) result = result.filter(r =>
+      filterAssignee === 'unassigned'
+        ? !r.empCode_assigned
+        : r.empCode_assigned === filterAssignee
+    );
+    if (filterDate) {
+      const now = new Date();
+      result = result.filter(r => {
+        const d = new Date(r.created_at);
+        if (filterDate === 'today') return d.toDateString() === now.toDateString();
+        if (filterDate === 'week') return (now - d) <= 7 * 86400000;
+        if (filterDate === 'month') return (now - d) <= 30 * 86400000;
+        return true;
+      });
+    }
+
+    // Sort
+    result = [...result].sort((a, b) => {
+      let valA = a[sortField], valB = b[sortField];
+      if (sortField === 'priority') {
+        const order = { Critical: 0, High: 1, Medium: 2, Normal: 3 };
+        valA = order[valA] ?? 9; valB = order[valB] ?? 9;
+      } else if (typeof valA === 'string') {
+        valA = valA?.toLowerCase(); valB = valB?.toLowerCase();
+      } else {
+        valA = new Date(valA); valB = new Date(valB);
+      }
+      if (valA < valB) return sortDir === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return result;
+  }, [requests, currentView, searchQuery, filterStatus, filterPriority, filterType, filterAssignee, filterDate, sortField, sortDir, user?.empcode]);
+
+  // Pagination
+  const totalPages = Math.ceil(filteredRequests.length / ITEMS_PER_PAGE);
+  const paginatedRequests = filteredRequests.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  // Reset page when filter changes
+  useEffect(() => { setCurrentPage(1); }, [filterStatus, filterPriority, filterType, filterAssignee, filterDate, searchQuery, currentView]);
+
+  // Unique values for filter dropdowns
+  const uniqueTypes = [...new Set(requests.map(r => r.problem_type_name || r.request_type).filter(Boolean))];
+  const uniqueAssignees = [...new Map(requests.filter(r => r.empCode_assigned).map(r => [r.empCode_assigned, r.assigned_name || r.empCode_assigned])).entries()];
+  const activeFilterCount = [filterStatus, filterPriority, filterType, filterAssignee, filterDate].filter(Boolean).length;
 
   const getPriorityStyle = (priority) => {
-    switch(priority) {
-      case 'Critical': return 'text-red-700 bg-red-50 border-red-200';
+    switch (priority) {
+      case 'Normal': return 'text-emerald-700 bg-emerald-50 border-emerald-200';
+      case 'Medium': return 'text-amber-700 bg-amber-50 border-amber-200';
       case 'High': return 'text-orange-700 bg-orange-50 border-orange-200';
-      case 'Medium': return 'text-blue-700 bg-blue-50 border-blue-200';
-      default: return 'text-gray-600 bg-gray-50 border-gray-200';
+      case 'Critical': return 'text-rose-700 bg-rose-50 border-rose-200';
+      default: return 'text-slate-600 bg-slate-50 border-slate-200';
     }
   };
 
-  const getStatusStyle = (status) => {
-    switch(status) {
-      case 'Completed': return 'text-emerald-700 bg-emerald-50 ring-emerald-600/20';
-      case 'In Progress': return 'text-blue-700 bg-blue-50 ring-blue-600/20';
-      case 'Rejected': return 'text-red-700 bg-red-50 ring-red-600/20';
-      default: return 'text-amber-700 bg-amber-50 ring-amber-600/20';
+const getStatusStyle = (status) => {
+  switch (status) {
+    case 'Completed':  return 'text-emerald-800 bg-emerald-100 ring-emerald-400';
+    case 'In Progress':return 'text-blue-800    bg-blue-100    ring-blue-400';
+    case 'Rejected':   return 'text-rose-800    bg-rose-100    ring-rose-400';
+    case 'Cancelled':  return 'text-slate-700   bg-slate-100   ring-slate-400';
+    case 'Pending':    return 'text-amber-800   bg-amber-100   ring-amber-400 animate-pulse';
+    default:           return 'text-amber-800   bg-amber-100   ring-amber-400';
+  }
+};
+  const getStatusDot = (status) => {
+    switch (status) {
+      case 'Pending': return 'w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0';
+      case 'In Progress': return 'w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0';
+      case 'Completed': return 'w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0';
+      case 'Rejected': return 'w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0';
+      case 'Cancelled': return 'w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0';
+      default: return 'w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0';
     }
+  };
+  const displayStatusLabel = (status) => {
+    switch (status) {
+      case 'Pending': return 'Pending';
+      case 'In Progress': return 'In Progress';
+      case 'Completed': return 'Completed';
+      case 'Rejected': return 'Rejected';
+      case 'Cancelled': return 'Cancelled';
+      default: return status;
+    }
+  };
+
+  const requestTypeMap = {
+    'Hardware Setup': 'asset', 'Hardware Repair': 'peripheral', 'Relocation (Move)': 'asset',
+    'Software Install': 'storage', 'Network & Printer': 'network', 'Account & Access': 'storage', 'Other': 'office',
   };
 
   const getRequestTypeIcon = (type) => {
-    switch(type) {
-      case 'Hardware Setup': return <IconMonitor className="w-4 h-4 text-indigo-500" />;
-      case 'Software Install': return <IconLaptop className="w-4 h-4 text-emerald-500" />;
-      case 'Relocation (Move)': return <IconMapPin className="w-4 h-4 text-amber-500" />;
-      case 'Hardware Repair': return <IconWrench className="w-4 h-4 text-red-500" />;
-      case 'Network & Printer': return <IconPaperclip className="w-4 h-4 text-blue-500" />;
-      default: return <IconLayoutDashboard className="w-4 h-4 text-slate-500" />;
+    const deviceKey = requestTypeMap[type] || 'office';
+    const { text } = getDeviceTypeColor(deviceKey);
+    switch (type) {
+      case 'Hardware Setup': return <Monitor className={`w-4 h-4 ${text}`} />;
+      case 'Software Install': return <Laptop className={`w-4 h-4 ${text}`} />;
+      case 'Relocation (Move)': return <MapPin className={`w-4 h-4 ${text}`} />;
+      case 'Hardware Repair': return <Wrench className={`w-4 h-4 ${text}`} />;
+      case 'Network & Printer': return <Paperclip className={`w-4 h-4 ${text}`} />;
+      default: return <LayoutDashboard className={`w-4 h-4 ${text}`} />;
     }
   };
+  const handleSort = (field) => {
+    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortField(field); setSortDir('asc'); }
+  };
 
+  const SortIcon = ({ field }) => {
+    if (sortField !== field) return <span className="text-slate-300 ml-1">↕</span>;
+    return <span className="text-indigo-500 ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>;
+  };
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex relative overflow-hidden">
-      
+    <div className="min-h-screen bg-slate-50/50 text-slate-900 font-sans flex overflow-hidden">
+
       {/* Toast Notification */}
       {notification && (
-        <div className={`fixed top-4 right-4 z-[70] px-6 py-3 rounded-xl shadow-xl font-medium flex items-center gap-2 transform transition-all duration-300 animate-in slide-in-from-top-5 ${
-          notification.type === 'error' ? 'bg-red-600 text-white' : 'bg-slate-900 text-white'
-        }`}>
-          {notification.type === 'error' ? <IconAlertCircle className="w-5 h-5"/> : <IconCheckCircle className="w-5 h-5"/>}
-          {notification.message}
+        <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4 fade-in duration-300">
+          <div className={`flex items-center gap-3.5 px-6 py-4 rounded-2xl shadow-2xl backdrop-blur-md border border-white/20 min-w-[280px] ${notification.type === 'error'
+              ? 'bg-rose-500/95 text-white shadow-rose-500/20'
+              : 'bg-emerald-500/95 text-white shadow-emerald-500/20'
+            }`}>
+            <div className="bg-white/20 p-2 rounded-full shrink-0">
+              {notification.type === 'error' ? <AlertCircle className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
+            </div>
+            <div className="flex-1 pr-2">
+              <p className="font-bold text-sm leading-tight">
+                {notification.type === 'error' ? 'เกิดข้อผิดพลาด' : 'สำเร็จ'}
+              </p>
+              <p className="text-white/90 text-xs font-semibold mt-0.5">{notification.message}</p>
+            </div>
+            <button
+              onClick={() => setNotification(null)}
+              className="p-1 hover:bg-white/10 rounded-lg transition text-white/70 hover:text-white shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Modern Sidebar */}
-      <aside className="w-64 bg-white border-r border-slate-200 p-6 hidden md:flex flex-col z-10">
-        <div className="text-2xl font-bold text-slate-900 mb-8 flex items-center gap-2 tracking-tight">
-          <div className="bg-indigo-600 p-1.5 rounded-lg text-white">
-            <Computer className="w-6 h-6" />
-          </div>
-          IT Help Desk
-        </div>
-
-        {/* User Card */}
-        <div className="mb-8 p-4 bg-slate-50 rounded-3xl border border-slate-100 flex flex-col items-center text-center gap-4">
-          <div className="w-20 h-20 rounded-full overflow-hidden bg-indigo-100 flex items-center justify-center border border-slate-200">
-            {user?.empPic ? (
-              <img src={user.empPic} alt={user?.name || 'User'} className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-indigo-700 font-bold text-2xl">{user?.name?.charAt(0) || 'U'}</span>
-            )}
-          </div>
-          <div className="text-sm w-full">
-            <p className="text-slate-900 font-semibold truncate">{user?.name || 'User'}</p>
-            <p className="text-slate-500 text-xs mt-1 break-words">{user?.email || 'No email'}</p>
-            <p className="text-slate-500 text-xs mt-2">{user?.sect_long || user?.sect || 'No department'}</p>
-            <p className="text-slate-400 text-xs mt-1">CC: {user?.cost_center || 'N/A'}</p>
-            <p className="text-slate-400 text-xs mt-1">{isITStaff ? '👨‍💻 IT Admin' : '👤 User'}</p>
-          </div>
-        </div>
-
-        <nav className="space-y-1.5 flex-1">
-          <button 
-            onClick={() => setCurrentView('all')}
-            className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium text-sm ${currentView === 'all' ? 'text-indigo-700 bg-indigo-50' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}`}
-          >
-            <IconLayoutDashboard className="w-5 h-5" /> All Tickets
-          </button>
-          <button 
-            onClick={() => setCurrentView('mine')}
-            className={`w-full flex items-center gap-3 p-3 rounded-xl transition font-medium text-sm ${currentView === 'mine' ? 'text-indigo-700 bg-indigo-50' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}`}
-          >
-            <IconUser className="w-5 h-5" /> My Tickets
-          </button>
-        </nav>
-
-        {/* Logout Button */}
-        <button
-          onClick={logout}
-          className="w-full flex items-center gap-3 p-3 rounded-xl text-red-600 hover:bg-red-50 transition font-medium text-sm mt-auto"
-        >
-          <LogOut className="w-5 h-5" /> Logout
-        </button>
-      </aside>
+      {/* Sidebar */}
+      <Sidebar user={user} isITStaff={isITStaff} logout={logout} />
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        
-        {/* Modern Header area with Search */}
-        <header className="px-8 py-6 border-b border-slate-200 bg-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 z-10">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-              {currentView === 'all' ? 'All IT Requests' : 'My IT Requests'}
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">{isITStaff && currentView === 'all' ? 'IT Staff - View all requests' : 'Showing your submitted tickets'}</p>
-          </div>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
-            <div className="inline-flex rounded-full bg-slate-100 p-1">
-              <button
-                onClick={() => setCurrentView('all')}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition ${currentView === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
-              >
-                All Tickets
-              </button>
-              <button
-                onClick={() => setCurrentView('mine')}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition ${currentView === 'mine' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
-              >
-                My Tickets
-              </button>
-            </div>
-            <div className="relative w-full sm:w-64">
-              <IconSearch className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input 
-                type="text" 
-                placeholder="Search requests..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-              />
-            </div>
-            <button 
-              onClick={() => setIsModalOpen(true)}
-              className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-full font-medium text-sm transition-all shadow-sm hover:shadow-md shrink-0 whitespace-nowrap"
-            >
-              <IconPlus className="w-4 h-4" /> Open Ticket
-            </button>
-          </div>
-        </header>
+      <main className="flex-1 flex flex-col h-screen overflow-hidden p-4 pl-0">
+        <div className="bg-white rounded-[2rem] flex flex-col h-full shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-200/60 relative">
 
-        {/* Scrollable Dashboard Body */}
-        <div className="flex-1 overflow-y-auto p-8">
-          
-          {/* Stats Cards - Modern minimal style */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
-              <div>
-                <p className="text-slate-500 text-sm font-medium mb-1">Total Requests</p>
-                <h3 className="text-3xl font-bold text-slate-900">{isLoading ? '-' : stats.total}</h3>
-              </div>
-              <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-600"><IconLayoutDashboard className="w-6 h-6" /></div>
+          {/* Header */}
+          <header className="px-8 py-6 border-b border-slate-100 bg-white/80 backdrop-blur-md flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 z-10 shrink-0">
+            <div>
+              <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+                {currentView === 'all' ? 'All IT Requests' : 'My IT Requests'}
+              </h1>
+              <p className="text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-widest">
+                {isITStaff && currentView === 'all' ? 'Manage all system tickets' : 'Your submitted tickets'}
+              </p>
             </div>
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
-              <div>
-                <p className="text-slate-500 text-sm font-medium mb-1">In Queue</p>
-                <h3 className="text-3xl font-bold text-slate-900">{isLoading ? '-' : stats.pending}</h3>
-              </div>
-              <div className="w-12 h-12 bg-amber-50 rounded-full flex items-center justify-center text-amber-600"><IconClock className="w-6 h-6" /></div>
-            </div>
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
-              <div>
-                <p className="text-slate-500 text-sm font-medium mb-1">Completed</p>
-                <h3 className="text-3xl font-bold text-slate-900">{isLoading ? '-' : stats.completed}</h3>
-              </div>
-              <div className="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-600"><IconCheckCircle className="w-6 h-6" /></div>
-            </div>
-          </div>
 
-          {/* Interactive Data List (Modern Table Alternative) */}
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-2xl">
-              <h2 className="text-base font-semibold text-slate-800">Recent Activity</h2>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {isLoading ? (
-                <div className="p-8 text-center text-slate-500">Loading data...</div>
-              ) : filteredRequests.length === 0 ? (
-                <div className="p-12 text-center flex flex-col items-center justify-center">
-                  <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4"><IconSearch className="w-8 h-8 text-slate-300" /></div>
-                  <p className="text-slate-600 font-medium">No requests found</p>
-                  <p className="text-slate-400 text-sm mt-1">Try adjusting your search or filters.</p>
-                </div>
-              ) : (
-                filteredRequests.map((req) => (
-                  <div 
-                    key={req.id} 
-                    onClick={() => fetchTicketDetails(req.id)}
-                    className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50 transition cursor-pointer group"
-                  >
-                    <div className="flex gap-4 items-start">
-                      <div className="mt-1">
-                         <span className={`inline-flex px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border ${getPriorityStyle(req.priority)}`}>
-                            {req.priority}
-                         </span>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-sm font-medium text-slate-500">{req.req_id}</span>
-                          <span className="text-slate-300">•</span>
-                          <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
-                            {getRequestTypeIcon(req.request_type)}
-                            {req.request_type}
-                          </span>
-                          <span className="text-slate-300">•</span>
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${getStatusStyle(req.status)}`}>
-                            {req.status}
-                          </span>
-                        </div>
-                        <h4 className="text-base font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">{req.project_name}</h4>
-                        <div className="flex items-center gap-3 mt-1.5 text-sm text-slate-500">
-                          <span className="flex items-center gap-1"><IconUser className="w-4 h-4 text-slate-400" /> {req.requester_name}</span>
-                          <span className="flex items-center gap-1"><IconMapPin className="w-4 h-4 text-slate-400" /> {req.location}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between sm:justify-end gap-6 sm:w-48 shrink-0">
-                      <div className="text-right">
-                        <p className="text-sm text-slate-900 font-medium">{req.device_count}x {req.device_type}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">Due: {req.target_date}</p>
-                      </div>
-                      <IconChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-500 transition-transform group-hover:translate-x-1" />
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
+              {/* View Toggle */}
+              <div className="inline-flex rounded-full bg-slate-100/80 p-1 border border-slate-200/50 shadow-inner">
+                <button onClick={() => navigate('/?view=all')} className={`px-5 py-2 rounded-full text-xs font-bold transition-all duration-300 ${currentView === 'all' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
+                  All Tickets
+                </button>
+                <button onClick={() => navigate('/?view=mine')} className={`px-5 py-2 rounded-full text-xs font-bold transition-all duration-300 ${currentView === 'mine' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
+                  My Tickets
+                </button>
+              </div>
+
+              {/* Grid / List Layout Switcher */}
+              <div className="inline-flex rounded-full bg-slate-100/80 p-1 border border-slate-200/50 shadow-inner">
+                <button
+                  onClick={() => setLayoutMode('list')}
+                  className={`p-2 rounded-full transition-all duration-300 ${layoutMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  title="List View"
+                >
+                  <List className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setLayoutMode('grid')}
+                  className={`p-2 rounded-full transition-all duration-300 ${layoutMode === 'grid' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  title="Grid View"
+                >
+                  <Grid className="w-4 h-4" />
+                </button>
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50">
+                    <p className="text-xs font-bold text-slate-400">
+                      แสดง {(currentPage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(currentPage * ITEMS_PER_PAGE, filteredRequests.length)} จาก {filteredRequests.length} รายการ
+                    </p>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-100 disabled:opacity-30 transition-colors">«</button>
+                      <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-100 disabled:opacity-30 transition-colors">‹</button>
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let page;
+                        if (totalPages <= 5) page = i + 1;
+                        else if (currentPage <= 3) page = i + 1;
+                        else if (currentPage >= totalPages - 2) page = totalPages - 4 + i;
+                        else page = currentPage - 2 + i;
+                        return (
+                          <button key={page} onClick={() => setCurrentPage(page)}
+                            className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${currentPage === page
+                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/30'
+                                : 'text-slate-500 hover:bg-slate-100'
+                              }`}>{page}</button>
+                        );
+                      })}
+                      <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-100 disabled:opacity-30 transition-colors">›</button>
+                      <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-100 disabled:opacity-30 transition-colors">»</button>
                     </div>
                   </div>
-                ))
-              )}
+                )}
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative w-full sm:w-64 group">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 group-focus-within:text-indigo-500 transition-colors" />
+                <input
+                  type="text" placeholder="Search ID, Project, Location..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-full text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all"
+                />
+              </div>
+
+              {/* Action Button */}
+              <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-full font-bold text-sm transition-all duration-300 shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/40 active:scale-95 shrink-0">
+                <Plus className="w-5 h-5" /> สร้าง Ticket ใหม่
+              </button>
             </div>
+          </header>
+
+          {/* Scrollable Dashboard Body */}
+          <div className="flex-1 overflow-y-auto p-8 bg-slate-50/30 custom-scrollbar">
+
+            {/* Premium Stats Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6">
+              {[
+                { label: 'ทั้งหมด', value: requests.filter(r => currentView === 'mine' ? r.empCode_created === user?.empcode : true).length, icon: <LayoutDashboard className="w-6 h-6 text-white" />, bgIcon: 'bg-indigo-500', shadow: 'shadow-indigo-200', filterVal: '' },
+                { label: 'Pending', value: requests.filter(r => r.status === 'Pending').length, icon: <Clock className="w-6 h-6 text-white" />, bgIcon: 'bg-amber-400', shadow: 'shadow-amber-200', filterVal: 'Pending' },
+                { label: 'In Progress', value: requests.filter(r => r.status === 'In Progress').length, icon: <Laptop className="w-6 h-6 text-white" />, bgIcon: 'bg-blue-500', shadow: 'shadow-blue-200', filterVal: 'In Progress' },
+                { label: 'Completed', value: requests.filter(r => r.status === 'Completed').length, icon: <CheckCircle className="w-6 h-6 text-white" />, bgIcon: 'bg-emerald-500', shadow: 'shadow-emerald-200', filterVal: 'Completed' },
+              ].map((s) => (
+                <div
+                  key={s.label}
+                  onClick={() => setFilterStatus(prev => prev === s.filterVal ? '' : s.filterVal)}
+                  className={`bg-white rounded-2xl border p-5 flex items-center justify-between shadow-sm cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-lg
+        ${filterStatus === s.filterVal && s.filterVal !== ''
+                      ? 'border-indigo-400 ring-2 ring-indigo-300/50'
+                      : 'border-slate-100 hover:border-slate-200'
+                    }`}
+                >
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{s.label}</p>
+                    <p className="text-3xl font-black text-slate-800 leading-none">{isLoading ? '—' : s.value}</p>
+                  </div>
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${s.bgIcon} shadow-lg ${s.shadow}`}>
+                    {s.icon}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Filter Bar */}
+            <div className="flex items-center gap-3 mb-5 flex-wrap">
+              <button
+                onClick={() => setShowFilter(v => !v)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${showFilter || activeFilterCount > 0
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-500/20'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                  }`}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" /></svg>
+                Filters
+                {activeFilterCount > 0 && (
+                  <span className="bg-white text-indigo-600 rounded-full px-1.5 py-0.5 text-[10px] font-black">{activeFilterCount}</span>
+                )}
+              </button>
+
+              {/* Active filter chips */}
+              {filterStatus && <Chip label={filterStatus} onRemove={() => setFilterStatus('')} />}
+              {filterPriority && <Chip label={filterPriority} onRemove={() => setFilterPriority('')} />}
+              {filterType && <Chip label={filterType} onRemove={() => setFilterType('')} />}
+              {filterDate && <Chip label={{ today: 'วันนี้', week: 'สัปดาห์นี้', month: 'เดือนนี้' }[filterDate]} onRemove={() => setFilterDate('')} />}
+              {filterAssignee && <Chip label={filterAssignee === 'unassigned' ? 'ยังไม่มีคนรับ' : uniqueAssignees.find(([k]) => k === filterAssignee)?.[1] || filterAssignee} onRemove={() => setFilterAssignee('')} />}
+
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={() => { setFilterStatus(''); setFilterPriority(''); setFilterType(''); setFilterAssignee(''); setFilterDate(''); }}
+                  className="text-xs font-bold text-rose-500 hover:text-rose-700 transition-colors"
+                >
+                  Clear all
+                </button>
+              )}
+
+              <span className="ml-auto text-xs font-bold text-slate-400">{filteredRequests.length} รายการ</span>
+            </div>
+
+            {/* Filter Panel */}
+            {showFilter && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 mb-5 grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Status</label>
+                  <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500">
+                    <option value="">ทั้งหมด</option>
+                    {['Pending', 'In Progress', 'Completed', 'Rejected', 'Cancelled'].map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Priority</label>
+                  <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500">
+                    <option value="">ทั้งหมด</option>
+                    {['Critical', 'High', 'Medium', 'Normal'].map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">ประเภทปัญหา</label>
+                  <select value={filterType} onChange={e => setFilterType(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500">
+                    <option value="">ทั้งหมด</option>
+                    {uniqueTypes.map(t => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">ผู้รับผิดชอบ</label>
+                  <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500">
+                    <option value="">ทั้งหมด</option>
+                    <option value="unassigned">ยังไม่มีคนรับ</option>
+                    {uniqueAssignees.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">วันที่สร้าง</label>
+                  <select value={filterDate} onChange={e => setFilterDate(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500">
+                    <option value="">ทั้งหมด</option>
+                    <option value="today">วันนี้</option>
+                    <option value="week">สัปดาห์นี้</option>
+                    <option value="month">เดือนนี้</option>
+                  </select>
+                </div>
+              </div>
+            )}
+            
+            {/* Loading & Empty States Management */}
+            {isLoading ? (
+              <div className="bg-white border border-slate-100 rounded-2xl shadow-sm p-16 text-center flex flex-col items-center gap-3 text-slate-400">
+                <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-sm font-bold tracking-widest uppercase">Loading Tickets...</span>
+              </div>
+            ) : filteredRequests.length === 0 ? (
+              <div className="bg-white border border-slate-100 rounded-2xl shadow-sm p-20 text-center flex flex-col items-center justify-center gap-3">
+                <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mb-2">
+                  <Search className="w-8 h-8 text-slate-300" />
+                </div>
+                <p className="text-slate-600 font-bold text-sm">ไม่พบรายการ Ticket</p>
+                <p className="text-slate-400 text-xs font-medium">ลองเปลี่ยนเงื่อนไขการค้นหาหรือสร้าง Ticket ใหม่</p>
+              </div>
+            ) : layoutMode === 'grid' ? (
+
+              /* --- GRID VIEW LAYOUT --- */
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 animate-in fade-in duration-300">
+                {paginatedRequests.map((req) => (
+                  <div
+                    key={req.id}
+                    onClick={() => fetchTicketDetails(req.id)}
+                    className={`relative border rounded-3xl p-6 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between cursor-pointer group overflow-hidden ${
+                      req.status === 'Pending' || !req.empCode_assigned
+                        ? 'bg-orange-50 border-orange-200 border-l-[6px] border-l-orange-500'
+                        : 'bg-white border-slate-100'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <span className={`inline-flex px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${getPriorityStyle(req.priority)}`}>
+                          {req.priority}
+                        </span>
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ring-1 ring-inset ${getStatusStyle(req.status)}`}>
+                          {displayStatusLabel(req.status)}
+                        </span>
+                      </div>
+
+                      <h3 className="text-base font-bold text-slate-800 group-hover:text-indigo-600 transition-colors truncate mb-1">
+                        {req.project_name}
+                      </h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                        {req.req_id}
+                        {(req.status === 'Pending' || !req.empCode_assigned) && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-400 text-white shadow-sm animate-pulse">
+                            NEW
+                          </span>
+                        )}
+                      </p>
+
+                      <div className="mb-4">
+                        <span className={`inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-xl border shadow-sm
+                          ${getDeviceTypeColor(requestTypeMap[req.request_type] || 'office').bg}
+                          ${getDeviceTypeColor(requestTypeMap[req.request_type] || 'office').text}
+                          ${getDeviceTypeColor(requestTypeMap[req.request_type] || 'office').border}`}>
+                          {getRequestTypeIcon(req.request_type)}
+                          <span className="truncate max-w-[150px]">{req.problem_type_name || req.request_type}</span>
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 mb-5">
+                        <MapPin className="w-4 h-4 shrink-0 text-slate-400" />
+                        <span className="truncate">{req.location}</span>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2" title={`Requester: ${req.requester_name}`}>
+                          <img src={req.emp_pic_url || `http://dcidmc.dci.daikin.co.jp/PICTURE/${req.empCode_created}.jpg`} alt="requester"
+                            className="w-8 h-8 rounded-full object-cover ring-2 ring-slate-100 bg-slate-50 shadow-sm"
+                            onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(req.requester_name)}&background=e0e7ff&color=4f46e5`; }} />
+                          <span className="text-[11px] font-bold text-slate-500 max-w-[60px] truncate">{req.requester_name.split(' ')[0]}</span>
+                        </div>
+
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-300" />
+
+                        <div className="flex items-center gap-2">
+                          {req.empCode_assigned ? (
+                            <div className="flex items-center gap-2" title={`Assignee: ${req.assigned_name}`}>
+                              <img src={`http://dcidmc.dci.daikin.co.jp/PICTURE/${req.empCode_assigned}.jpg`} alt="assignee"
+                                className="w-8 h-8 rounded-full object-cover ring-2 ring-indigo-50 bg-indigo-50 shadow-sm"
+                                onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(req.assigned_name || req.empCode_assigned)}&background=e0e7ff&color=4f46e5`; }} />
+                              <span className="text-[11px] font-bold text-indigo-600 max-w-[60px] truncate">{req.assigned_name?.split(' ')[0] || req.empCode_assigned}</span>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-dashed border-slate-200">Unassigned</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <p className="text-xs font-black text-slate-500">Due: {formatDateShort(req.target_date)}</p>
+                        {req.accepted_at && req.completed_at ? (
+                          <p className="text-xs font-bold text-emerald-500 mt-0.5">⏱ {formatElapsedTime(req.accepted_at, req.completed_at)}</p>
+                        ) : req.accepted_at ? (
+                          <p className="text-xs font-bold text-indigo-500 mt-0.5">In progress...</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+
+              /* --- LIST VIEW LAYOUT (Modern Compact) --- */
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto animate-in fade-in duration-300">
+                <table className="w-full text-left text-sm whitespace-nowrap table-fixed">
+                  <thead className="bg-slate-50/80 text-slate-800 text-[12px] uppercase font-black tracking-widest border-b border-slate-100">
+  <tr>
+    <th className="px-4 py-4 w-24" onClick={() => handleSort('priority')}>Priority<SortIcon field="priority"/></th>
+    <th className="px-4 py-4 w-52" onClick={() => handleSort('project_name')}>Problem<SortIcon field="project_name"/></th>
+    <th className="px-4 py-4 w-40">Category</th>
+    <th className="px-4 py-4 w-32" onClick={() => handleSort('status')}>Status<SortIcon field="status"/></th>
+    <th className="px-4 py-4 w-40">Location</th>
+    <th className="px-4 py-4 w-28">Requester</th>
+    <th className="px-4 py-4 w-28">In Charge</th>
+    <th className="px-4 py-4 w-28 text-right" onClick={() => handleSort('target_date')}>Target Date<SortIcon field="target_date"/></th>
+    <th className="px-4 py-4 w-10"></th>
+  </tr>
+</thead>
+                  <tbody className="divide-y divide-slate-50 text-sm">
+                    {paginatedRequests.map((req) => (
+                      <tr 
+                        key={req.id}
+                        onClick={() => fetchTicketDetails(req.id)}
+                        className={`relative transition-colors group cursor-pointer ${
+                          req.status === 'Pending' || !req.empCode_assigned
+                            ? 'bg-orange-50 hover:bg-orange-100/50'
+                            : 'hover:bg-indigo-50/40'
+                        }`}
+                      >
+                        {/* Priority */}
+                        <td className={`px-6 py-3 ${req.status === 'Pending' || !req.empCode_assigned ? 'border-l-[6px] border-l-orange-500' : 'border-l-[6px] border-l-transparent'}`}>
+                          <span className={`inline-flex px-2.5 py-1 rounded-md text-[12px] font-black uppercase tracking-widest border ${getPriorityStyle(req.priority)}`}>
+                            {req.priority}
+                            
+                          </span>
+                         
+                        </td>
+
+                        {/* Project Name */}
+                        <td className="px-6 py-3 pr-2">
+                          <p className="text-sm font-bold text-slate-800 group-hover:text-indigo-600 transition-colors truncate max-w-[250px]">{req.project_name}</p>
+                          <p className="text-[10px] font-bold text-slate-400 mt-0.5 uppercase tracking-wider flex items-center gap-2">
+                            {req.req_id}
+                            {(req.status === 'Pending' || !req.empCode_assigned) && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-400 text-white shadow-sm animate-pulse">
+                                NEW
+                              </span>
+                            )}
+                          </p>
+                        </td>
+
+                        {/* Category */}
+                        <td className="px-6 py-3">
+                          <span className={`inline-flex items-center gap-2 text-[11px] font-bold px-2.5 py-1 rounded-lg w-fit border shadow-sm
+                            ${getDeviceTypeColor(requestTypeMap[req.request_type] || 'office').bg}
+                            ${getDeviceTypeColor(requestTypeMap[req.request_type] || 'office').text}
+                            ${getDeviceTypeColor(requestTypeMap[req.request_type] || 'office').border}`}>
+                            {getRequestTypeIcon(req.request_type)}
+                            <span className="truncate max-w-[120px]">{req.problem_type_name || req.request_type}</span>
+                          </span>
+                        </td>
+
+                        {/* Status */}
+                        <td className="px-6 py-3">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ring-1 ring-inset ${getStatusStyle(req.status)}`}>
+                            <span className={getStatusDot(req.status)} />
+                            {displayStatusLabel(req.status)}
+                          </span>
+                        </td>
+
+                        {/* Location */}
+                        <td className="px-6 py-3">
+                          <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+                            <MapPin className="w-3.5 h-3.5 shrink-0 text-slate-900" /> {req.location}
+                          </span>
+                        </td>
+
+                        {/* Requester */}
+                        <td className="px-6 py-3">
+                          <div className="flex items-center" title={`Requester: ${req.requester_name}`}>
+                            <span className="text-[12px] font-bold text-slate-700 truncate max-w-[150px]">{req.requester_name?.split(' ')[0] || req.empCode_created}</span>
+                          </div>
+                        </td>
+
+                        {/* In Charge */}
+                        <td className="px-6 py-3">
+                          <div className="flex items-center gap-2" title={req.empCode_assigned ? `In Charge: ${req.assigned_name}` : 'Unassigned'}>
+                            {req.empCode_assigned ? (
+                              <span className="text-[12px] font-bold text-indigo-700 truncate max-w-[150px] bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100">{req.assigned_name?.split(' ')[0] || req.empCode_assigned}</span>
+                            ) : (
+                              <span className="text-[11px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-dashed border-slate-200">Unassigned</span>
+                            )}
+                            
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                       
+                       
+                      </p>
+                          </div>
+                        </td>
+
+                        {/* Target Date */}
+                        <td className="px-6 py-3 text-right">
+                          <p className="text-xs font-bold text-slate-600">{formatDateShort(req.target_date)}</p>
+                          {req.accepted_at && req.completed_at ? (
+                            <p className="text-xs font-bold text-emerald-500 mt-0.5">⏱ {formatElapsedTime(req.accepted_at, req.completed_at)}</p>
+                          ) : req.accepted_at ? (
+                            <p className="text-[10px] font-bold text-indigo-500 mt-0.5">In progress...</p>
+                          ) : null}
+                        </td>
+
+                        {/* Action Icon */}
+                        <td className="px-6 py-3 text-right">
+                          <button className="text-slate-400 hover:text-indigo-600 p-2 rounded-full hover:bg-indigo-100/50 transition-colors">
+                            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       </main>
 
-      {/* --- SLIDE-OVER DRAWER (TICKET DETAILS) --- */}
-      {selectedTicket && (
-        <>
-          <div className="fixed inset-0 bg-slate-900/30 z-40 transition-opacity" onClick={() => setSelectedTicket(null)}></div>
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl z-50 flex flex-col max-h-[90vh] overflow-hidden border border-slate-200 animate-in zoom-in-95">
-            
-            {/* Drawer Header */}
-            <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-start bg-slate-50/50">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <p className="text-sm font-medium text-slate-500">{selectedTicket.req_id}</p>
-                  <span className="text-slate-300">•</span>
-                  <span className="flex items-center gap-1 text-xs font-semibold text-slate-600">
-                    {getRequestTypeIcon(selectedTicket.request_type)}
-                    {selectedTicket.request_type}
-                  </span>
-                </div>
-                <h2 className="text-xl font-bold text-slate-900 leading-tight">{selectedTicket.project_name}</h2>
-              </div>
-              <button onClick={() => setSelectedTicket(null)} className="p-2 hover:bg-slate-200 rounded-full transition text-slate-500">
-                <IconX className="w-5 h-5" />
-              </button>
-            </div>
+      {/* --- PREMIUM CENTERED MODAL (TICKET DETAILS) --- */}
+      <TicketDetailModal
+        ticket={selectedTicket}
+        onClose={() => setSelectedTicket(null)}
+        ticketHistory={ticketHistory}
+        user={user}
+        isITStaff={isITStaff}
+        formatters={{
+          formatDateShort,
+          formatElapsedTime,
+          formatThaiDateTime,
+          getStatusStyle,
+          getPriorityStyle,
+          getRequestTypeIcon,
+          displayStatusLabel
+        }}
+        actions={{
+          openCommentModal,
+          openConfirm,
+          handleAcceptTicket,
+          handleCancelTicket,
+          handleDeleteTicket,
+          setCommentMode,
+          setCommentText,
+          setCommentModalOpen
+        }}
+      />
 
-            {/* Drawer Content - Scrollable */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-8">
-              
-              {/* Status & Priority */}
-              <div className="flex gap-4">
-                <div className="flex-1 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mb-1">Status</p>
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ring-1 ring-inset ${getStatusStyle(selectedTicket.status)}`}>
-                    {selectedTicket.status}
-                  </span>
-                </div>
-                <div className="flex-1 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mb-1">Priority</p>
-                  <span className={`inline-flex px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider border ${getPriorityStyle(selectedTicket.priority)}`}>
-                    {selectedTicket.priority}
-                  </span>
-                </div>
-              </div>
+      {/* --- MODALS --- */}
 
-              {/* Info Grid */}
-              <div className="grid grid-cols-2 gap-y-6 gap-x-4 text-sm">
-                <div>
-                  <p className="text-slate-500 mb-1 flex items-center gap-1.5"><IconUser className="w-4 h-4"/> Requester</p>
-                  <p className="font-medium text-slate-900">{selectedTicket.requester_name}</p>
-                  <p className="text-xs text-slate-500">CC: {selectedTicket.cost_center}</p>
-                  <p className="text-xs text-slate-500">{selectedTicket.requester_email}</p>
-                </div>
-                <div>
-                  <p className="text-slate-500 mb-1 flex items-center gap-1.5"><IconLaptop className="w-4 h-4"/> Equipment</p>
-                  <p className="font-medium text-slate-900">{selectedTicket.device_count}x {selectedTicket.device_type}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-slate-500 mb-1 flex items-center gap-1.5"><IconMapPin className="w-4 h-4"/> Location</p>
-                  <p className="font-medium text-slate-900">{selectedTicket.location}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-slate-500 mb-1 flex items-center gap-1.5"><IconClock className="w-4 h-4"/> Target Date</p>
-                  <p className="font-medium text-slate-900">{new Date(selectedTicket.target_date).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                </div>
-              </div>
-
-              <div className="pt-6 border-t border-slate-100">
-                <p className="text-sm text-slate-500 mb-2 font-medium">Requirements & Notes</p>
-                <div className="bg-slate-50 p-4 rounded-xl text-sm text-slate-700 leading-relaxed border border-slate-100">
-                  {selectedTicket.notes || 'No additional notes provided.'}
-                </div>
-              </div>
-
-              <div className="pt-6 border-t border-slate-100">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm text-slate-900 font-bold">Comments</p>
-                  <button onClick={() => { setCommentModalOpen(true); setCommentText(''); }} className="text-indigo-600 hover:text-indigo-800 text-sm font-medium">Add Comment</button>
-                </div>
-                <div className="bg-white border border-slate-200 rounded-2xl p-4 text-sm text-slate-700">
-                  {selectedTicket.comments && selectedTicket.comments.length > 0 ? (
-                    <div className="space-y-4">
-                      {selectedTicket.comments.map((commentItem) => (
-                        <div key={commentItem.id} className="rounded-2xl border border-slate-100 p-4 bg-slate-50">
-                          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-                            <span>{commentItem.empCode}</span>
-                            <span>{new Date(commentItem.created_at).toLocaleString('en-GB')}</span>
-                          </div>
-                          <p className="text-slate-700 whitespace-pre-line">{commentItem.comment}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-slate-500">No comments yet. Click Add Comment to reply to the requester.</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Timeline (Modern Feature) */}
-              <div className="pt-6 border-t border-slate-100">
-                <p className="text-sm text-slate-900 mb-4 font-bold">Request Timeline & Activity</p>
-                <div className="relative border-l-2 border-slate-100 ml-3 space-y-6">
-                  {ticketHistory.length === 0 ? (
-                    <div className="relative pl-6">
-                        <span className="absolute -left-[9px] top-1 w-4 h-4 rounded-full bg-slate-300 ring-4 ring-white"></span>
-                        <p className="text-sm font-medium text-slate-900">Ticket Opened</p>
-                        <p className="text-xs text-slate-500 mt-1">{new Date(selectedTicket.created_at).toLocaleString('en-GB')}</p>
-                    </div>
-                  ) : (
-                    ticketHistory.map((log) => (
-                      <div key={log.id} className="relative pl-6">
-                        <span className={`absolute -left-[9px] top-1 w-4 h-4 rounded-full ring-4 ring-white ${log.action_type === 'Comment' ? 'bg-amber-400' : log.action_type === 'Created' ? 'bg-slate-300' : log.action_type === 'Completed' ? 'bg-emerald-500' : 'bg-indigo-500'}`}></span>
-                        <div className="flex justify-between items-start gap-4">
-                            <div>
-                                <p className="text-sm font-bold text-slate-900">{log.action_type} <span className="font-normal text-slate-500">by {log.actor_name}</span></p>
-                                <p className="text-sm text-slate-700 mt-1 whitespace-pre-wrap">{log.details}</p>
-                            </div>
-                            <span className="text-xs text-slate-400 whitespace-nowrap">{new Date(log.created_at).toLocaleString('en-GB')}</span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-            </div>
-            
-            {/* Drawer Footer Actions */}
-            <div className="p-4 border-t border-slate-200 bg-slate-50 grid gap-3 sm:grid-cols-3">
-              <button onClick={() => openCommentModal('comment')} className="w-full py-2.5 bg-white border border-slate-300 text-slate-700 rounded-lg font-medium text-sm hover:bg-slate-50 transition">
-                Add Comment
-              </button>
-              {isITStaff && selectedTicket?.status !== 'Completed' && selectedTicket?.status !== 'Rejected' && (
-                <button onClick={() => openCommentModal('reject')} className="w-full py-2.5 bg-rose-600 text-white rounded-lg font-medium text-sm hover:bg-rose-700 transition">
-                  Reject Ticket
-                </button>
-              )}
-              {isITStaff && selectedTicket?.status === 'Pending' && (
-                <button onClick={() => openConfirm({
-                  title: 'Confirm รับเคส',
-                  message: `คุณแน่ใจว่าจะรับเคส ${selectedTicket.req_id} นี้หรือไม่? การดำเนินการนี้จะเปลี่ยนสถานะเป็น "กำลังดำเนินการ".`,
-                  confirmLabel: 'รับเคส',
-                  onConfirm: handleAcceptTicket
-                })} className="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-medium text-sm hover:bg-indigo-700 transition">
-                  รับเคส
-                </button>
-              )}
-              {isITStaff && selectedTicket?.status === 'In Progress' && (
-                <button onClick={() => openConfirm({
-                  title: 'Confirm ปิดเคส',
-                  message: `คุณแน่ใจว่าจะปิดเคส ${selectedTicket.req_id} นี้หรือไม่? การดำเนินการนี้จะเปลี่ยนสถานะเป็น "ปิดเคส".`,
-                  confirmLabel: 'ปิดเคส',
-                  onConfirm: handleCompleteTicket
-                })} className="w-full py-2.5 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 transition">
-                  ปิดเคส
-                </button>
-              )}
-              {(isITStaff || selectedTicket?.empCode_created === user?.empcode) && (
-                <button onClick={() => openConfirm({
-                  title: 'Confirm ลบเคส',
-                  message: `คุณแน่ใจว่าจะลบเคส ${selectedTicket.req_id} นี้หรือไม่? การลบจะไม่สามารถกู้คืนได้.`,
-                  confirmLabel: 'ลบเคส',
-                  onConfirm: handleDeleteTicket
-                })} className="w-full py-2.5 bg-red-600 text-white rounded-lg font-medium text-sm hover:bg-red-700 transition">
-                  Delete Ticket
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-        </>
-      )}
-
-      {/* Comment Modal */}
+      {/* Comment/Close Modal */}
       {commentModalOpen && selectedTicket && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/30" onClick={() => setCommentModalOpen(false)}></div>
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl z-[90] p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold">
-                {commentMode === 'reject' ? 'Reject Ticket' : 'Add Comment'} to {selectedTicket.req_id}
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={() => setCommentModalOpen(false)}></div>
+          <div className="bg-white rounded-[2rem] w-full max-w-lg shadow-2xl z-[90] p-8 border border-white/50 animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-black text-slate-800">
+                {commentMode === 'reject' ? 'Reject Ticket' : commentMode === 'close' ? 'Close Ticket' : 'Add Comment'}
               </h3>
-              <button onClick={() => setCommentModalOpen(false)} className="text-slate-400 hover:text-slate-700"><IconX className="w-5 h-5" /></button>
+              <button onClick={() => setCommentModalOpen(false)} className="p-2 bg-slate-50 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <p className="text-sm text-slate-500 mb-3">
-              {commentMode === 'reject'
-                ? 'กรุณาระบุเหตุผลในการปฏิเสธเคสนี้อย่างสั้น ๆ ก่อนยืนยัน'
-                : 'Write a comment for the requester. Comments are stored separately from ticket details.'}
-            </p>
-            <textarea rows="4" value={commentText} onChange={(e) => setCommentText(e.target.value)} className="w-full border border-slate-200 rounded-lg p-3 mb-4" placeholder={commentMode === 'reject' ? 'Enter rejection reason...' : 'Write your comment...'}></textarea>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setCommentModalOpen(false)} className="px-4 py-2 rounded-lg">Cancel</button>
-              <button onClick={() => openConfirm({
-                title: commentMode === 'reject' ? 'Confirm reject ticket' : 'Confirm submit comment',
-                message: commentMode === 'reject'
-                  ? `คุณต้องการปฏิเสธเคส ${selectedTicket.req_id} โดยใช้เหตุผลนี้หรือไม่?`
-                  : `คุณต้องการบันทึกคอมเม้นท์สำหรับ ${selectedTicket.req_id} หรือไม่?`,
-                confirmLabel: commentMode === 'reject' ? 'Reject Ticket' : 'Save Comment',
-                onConfirm: handleSaveComment
-              })} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">
-                {commentMode === 'reject' ? 'Reject Ticket' : 'Save'}
+
+            {commentMode === 'close' ? (
+              <div className="space-y-5">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">สาเหตุของปัญหา <span className="text-rose-500">*</span></label>
+                  <textarea rows="3" value={rootCause} onChange={(e) => setRootCause(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm font-medium text-slate-700 focus:bg-white focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 resize-none transition-all"
+                    placeholder="ระบุสาเหตุ (เช่น RAM เสีย, อะไหล่ชำรุด...)" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">วิธีแก้ไข <span className="text-rose-500">*</span></label>
+                  <textarea rows="3" value={solution} onChange={(e) => setSolution(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm font-medium text-slate-700 focus:bg-white focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 resize-none transition-all"
+                    placeholder="ระบุการแก้ไข (เช่น เปลี่ยนอะไหล่, ตั้งค่าใหม่...)" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Comment เพิ่มเติม</label>
+                  <textarea rows="2" value={commentText} onChange={(e) => setCommentText(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm font-medium text-slate-700 focus:bg-white focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 resize-none transition-all"
+                    placeholder="หมายเหตุ (ไม่บังคับ)" />
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
+                  {commentMode === 'reject' ? 'เหตุผลการปฏิเสธ (Required)' : 'ข้อความ (Message)'}
+                </label>
+                <textarea rows="4" value={commentText} onChange={(e) => setCommentText(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm font-medium text-slate-700 focus:bg-white focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 resize-none transition-all"
+                  placeholder={commentMode === 'reject' ? "ระบุเหตุผลที่ไม่สามารถรับเคสได้..." : "พิมพ์ข้อความที่ต้องการแจ้ง..."} />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 mt-8">
+              <button onClick={() => setCommentModalOpen(false)} className="px-6 py-3 rounded-xl text-xs font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={() => openConfirm({
+                  title: commentMode === 'close' ? 'Confirm ปิดเคส' : commentMode === 'reject' ? 'Confirm Reject' : 'Confirm Comment',
+                  message: commentMode === 'close' ? `ยืนยันการปิดเคส ${selectedTicket.req_id}?` : commentMode === 'reject' ? `ยืนยันการปฏิเสธเคส ${selectedTicket.req_id}?` : 'บันทึกข้อความลงในระบบ?',
+                  confirmLabel: commentMode === 'close' ? 'ปิดเคส' : commentMode === 'reject' ? 'Reject' : 'Save Comment',
+                  onConfirm: handleSaveComment
+                })}
+                disabled={commentMode === 'close' && (!rootCause.trim() || !solution.trim())}
+                className={`px-8 py-3 rounded-xl text-xs font-bold text-white transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:pointer-events-none
+                  ${commentMode === 'close' ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/30' : commentMode === 'reject' ? 'bg-rose-500 hover:bg-rose-600 shadow-rose-500/30' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/30'}`}
+              >
+                {commentMode === 'close' ? 'Submit & Close' : commentMode === 'reject' ? 'Reject Ticket' : 'Post Comment'}
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Confirm Modal */}
       {pendingAction && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40" onClick={closeConfirm}></div>
-          <div className="relative bg-white rounded-3xl w-full max-w-md shadow-2xl border border-slate-200 overflow-hidden z-[100]">
-            <div className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <span className="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-amber-100 text-amber-700"><IconAlertCircle className="w-6 h-6" /></span>
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">{pendingAction.title}</h3>
-                  <p className="text-sm text-slate-500 mt-1">{pendingAction.message}</p>
-                </div>
-              </div>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={closeConfirm}></div>
+          <div className="relative bg-white rounded-3xl w-full max-w-sm shadow-2xl border border-white/50 overflow-hidden z-[110] animate-in zoom-in-95 duration-200 p-6 text-center">
+            <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4 ring-4 ring-rose-50/50">
+              <AlertCircle className="w-8 h-8 text-rose-500" />
             </div>
-            <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3">
-              <button onClick={closeConfirm} className="px-4 py-2 rounded-lg text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 transition">Cancel</button>
-              <button onClick={executePendingAction} className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition">{pendingAction.confirmLabel}</button>
+            <h3 className="text-xl font-black text-slate-800 mb-2">{pendingAction.title}</h3>
+            <p className="text-sm font-medium text-slate-500 mb-8 px-4 leading-relaxed">{pendingAction.message}</p>
+
+            <div className="flex gap-3 w-full">
+              <button onClick={closeConfirm} className="flex-1 py-3 rounded-xl text-xs font-bold text-slate-600 bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-colors">
+                Cancel
+              </button>
+              <button onClick={executePendingAction} className="flex-1 py-3 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-500/30 active:scale-95 transition-all">
+                {pendingAction.confirmLabel}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* --- NEW REQUEST MODAL (ENHANCED Form) --- */}
+      {/* New Request Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/40 backdrop-blur-sm transition-opacity">
-          <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-full animate-in zoom-in-95 duration-200">
-            
-            <div className="px-6 py-5 border-b border-slate-100 bg-white">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-900">New IT Service Request</h2>
-                  <p className="text-sm text-slate-500 mt-0.5">Please provide details so we can assist you promptly.</p>
-                </div>
-                <button type="button" onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 transition bg-slate-50 hover:bg-slate-100 p-2 rounded-full">
-                  <IconX className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Requester</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-900">{user?.name || 'Unknown User'}</p>
-                  <p className="text-xs text-slate-500 mt-1">{user?.email || 'No email'}</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Department</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-900">{user?.sect_long || user?.sect || 'No department'}</p>
-                  <p className="text-xs text-slate-500 mt-1">CC: {user?.cost_center || 'N/A'}</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 flex items-center justify-center">
-                  {user?.empPic ? (
-                    <img src={user.empPic} alt={user?.name || 'User'} className="h-20 w-20 rounded-full object-cover" />
-                  ) : (
-                    <div className="h-20 w-20 rounded-full bg-slate-200 flex items-center justify-center text-slate-500">No Photo</div>
-                  )}
-                </div>
-              </div>
-            </div>
-            
-            <form onSubmit={handleSubmit} className="p-6 space-y-6 overflow-y-auto flex-1">
-              
-              {/* Section 1: General Info */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs">1</span> 
-                  Request Details
-                </h3>
-                
-                {/* NEW: Category Selector */}
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">What do you need help with? <span className="text-red-500">*</span></label>
-                  <select name="requestType" value={formData.requestType} onChange={handleInputChange} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all appearance-none cursor-pointer">
-                    <option value="Hardware Setup">🖥️ Hardware: ตั้งค่าใหม่ / ติดตั้ง</option>
-                    <option value="Relocation (Move)">📦 Hardware: ย้าย / ปรับปรุง</option>
-                    <option value="Hardware Repair">🔧 Hardware: ซ่อม / แทนที่</option>
-                    <option value="Software Install">💿 Software: ติดตั้ง / อัปเดต / License</option>
-                    <option value="Network & Printer">🖨️ Network & Printer ติดตั้ง / แก้ไข</option>
-                    <option value="Account & Access">🔑 Account Access / VPN / Shared Drive</option>
-                    <option value="Other">❓ Other Services</option>
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Subject / Problem <span className="text-red-500">*</span></label>
-                    <input type="text" name="projectName" value={formData.projectName} onChange={handleInputChange} required className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all" placeholder="e.g. คอมพิวเตอร์ใช้งานไม่ได้, ปริ้นเตอร์ไม่ทำงาน" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Location / Desk Number <span className="text-red-500">*</span></label>
-                    <input type="text" name="location" value={formData.location} onChange={handleInputChange} required className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all" placeholder="e.g. Building 1, Floor 3, Desk A12" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 2: Technical Specs */}
-              <div className="space-y-4 pt-4 border-t border-slate-100">
-                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs">2</span> 
-                  Hardware Details
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Device Type</label>
-                    <select name="deviceType" value={formData.deviceType} onChange={handleInputChange} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all appearance-none cursor-pointer">
-                      <option>Notebook (Windows)</option>
-                      <option>Desktop Workstation</option>
-                      <option>Monitor / Accessories Only</option>
-                      <option>Printer / Scanner</option>
-                      <option>Server / Network Gear</option>
-                      <option>Not Applicable (N/A)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Quantity</label>
-                    <input type="number" name="deviceCount" value={formData.deviceCount} onChange={handleInputChange} min="1" className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 3: Priority & Schedule */}
-              <div className="space-y-4 pt-4 border-t border-slate-100">
-                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs">3</span> 
-                  Scheduling & Priority
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Urgency Level</label>
-                    <div className="flex gap-3">
-                      {['Normal', 'Medium', 'High', 'Critical'].map(level => (
-                        <label key={level} className={`flex-1 cursor-pointer text-center px-2 py-2 border rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${formData.priority === level ? 'bg-slate-900 border-slate-900 text-white shadow-md' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
-                          <input type="radio" name="priority" value={level} checked={formData.priority === level} onChange={handleInputChange} className="hidden" />
-                          {level}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Target Completion Date</label>
-                    <input type="date" name="targetDate" value={formData.targetDate} onChange={handleInputChange} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Extra Info */}
-              <div className="pt-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Specific Requirements & Notes</label>
-                <textarea rows="2" name="requirements" value={formData.requirements} onChange={handleInputChange} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all resize-none" placeholder="Software needed, network requirements, etc."></textarea>
-              </div>
-              
-              {/* Fake Attachment UI for modern feel */}
-              <div className="border border-dashed border-slate-300 rounded-xl p-4 flex flex-col items-center justify-center text-slate-500 bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition">
-                <IconPaperclip className="w-6 h-6 mb-2 text-slate-400" />
-                <p className="text-sm font-medium">Click to upload floor plans or reference images</p>
-                <p className="text-xs mt-1">SVG, PNG, JPG or PDF (max. 5MB)</p>
-              </div>
-
-              <div className="pt-6 border-t border-slate-100 flex justify-end gap-3 sticky bottom-0 bg-white">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2.5 rounded-full font-medium text-slate-600 hover:bg-slate-100 transition">
-                  Cancel
-                </button>
-                <button type="submit" className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full font-medium transition-all shadow-md shadow-indigo-200 active:scale-95">
-                  Submit Ticket
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <OpenTicketModal
+          user={user}
+          onClose={() => setIsModalOpen(false)}
+          onSubmit={async (payload) => {
+            try {
+              await ticketAPI.createTicket(payload);
+              showNotification('Request submitted successfully!', 'success');
+              setIsModalOpen(false);
+              fetchRequests();
+            } catch (error) {
+              showNotification('Failed to submit request', 'error');
+            }
+          }}
+        />
       )}
     </div>
   );
