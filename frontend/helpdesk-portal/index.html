@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IT Service Desk Portal V3</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config = { theme: { extend: { colors: { ink: '#14213d', 'ink-soft': '#3d4a63' } } } };</script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'IBM Plex Sans Thai', sans-serif; background-color: #f5f7fa; }
+        h1, h2, h3 { font-family: 'Kanit', 'IBM Plex Sans Thai', sans-serif; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .modal-enter { animation: modalPop 0.2s ease-out; }
+        @keyframes modalPop { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    </style>
+</head>
+<body class="text-ink flex flex-col min-h-screen">
+
+    <!-- Navbar -->
+    <nav class="bg-ink text-white shadow-lg sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-3">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-3 cursor-pointer" onclick="switchView('user')">
+                    <i class="fa-solid fa-laptop-medical text-2xl"></i>
+                    <div>
+                        <h1 class="text-xl font-bold">IT Service Desk</h1>
+                        <p class="text-xs text-slate-300">ระบบแจ้งซ่อมออนไลน์ V3</p>
+                    </div>
+                </div>
+                
+                <!-- เมนูสลับหน้า -->
+                <div class="flex items-center gap-4">
+                    <div class="hidden md:flex bg-ink-soft rounded-lg p-1">
+                        <button onclick="switchView('user')" id="btn-nav-user" class="px-4 py-1.5 rounded-md text-sm font-medium transition bg-white text-ink shadow">
+                            <i class="fa-solid fa-user-pen mr-1"></i> แจ้งซ่อม
+                        </button>
+                        <button onclick="switchView('admin')" id="btn-nav-admin" class="px-4 py-1.5 rounded-md text-sm font-medium transition text-slate-300 hover:text-white hover:bg-ink-soft">
+                            <i class="fa-solid fa-user-shield mr-1"></i> เจ้าหน้าที่
+                        </button>
+                    </div>
+                    <div id="connection-status" class="text-xs bg-ink-soft px-3 py-1 rounded-full flex items-center gap-2">
+                        <div class="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Mobile Menu (Simple) -->
+            <div class="md:hidden flex justify-around mt-3 border-t border-ink-soft pt-2 text-sm">
+                <button onclick="switchView('user')" class="flex-1 text-center py-1 hover:bg-ink-soft rounded">แจ้งซ่อม</button>
+                <button onclick="switchView('admin')" class="flex-1 text-center py-1 hover:bg-ink-soft rounded">เจ้าหน้าที่</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Container -->
+    <div class="container mx-auto px-4 py-8 flex-grow">
+
+        <!-- VIEW 1: USER FORM (หน้าแจ้งซ่อม) -->
+        <div id="view-user" class="fade-in max-w-3xl mx-auto">
+            <div class="bg-white rounded-xl shadow-md p-6 md:p-8">
+                <div class="text-center mb-8">
+                    <h2 class="text-2xl font-bold text-ink">แบบฟอร์มแจ้งซ่อม</h2>
+                    <p class="text-gray-500">กรุณากรอกข้อมูลให้ครบถ้วนเพื่อให้เจ้าหน้าที่ตรวจสอบได้รวดเร็ว</p>
+                </div>
+                
+                <form id="ticketForm" class="space-y-6">
+                    <!-- Section 1: ข้อมูลผู้แจ้ง -->
+                    <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                        <h3 class="text-blue-800 font-semibold mb-3 flex items-center"><i class="fa-solid fa-id-card mr-2"></i>ข้อมูลผู้แจ้ง (Contact Info)</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล <span class="text-red-500">*</span></label>
+                                <input type="text" id="requesterName" required class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ink focus:outline-none" placeholder="เช่น สมชาย ใจดี">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">แผนก/ฝ่าย <span class="text-red-500">*</span></label>
+                                <select id="department" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ink focus:outline-none">
+                                    <option value="HR">ทรัพยากรบุคคล (HR)</option>
+                                    <option value="Accounting">บัญชีและการเงิน</option>
+                                    <option value="Sales">ฝ่ายขาย (Sales)</option>
+                                    <option value="Marketing">การตลาด (Marketing)</option>
+                                    <option value="IT">ไอที (IT)</option>
+                                    <option value="Operations">ปฏิบัติการ (Operations)</option>
+                                    <option value="Management">ผู้บริหาร</option>
+                                    <option value="Other">อื่นๆ</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">เบอร์โทรศัพท์</label>
+                                <input type="tel" id="phone" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ink focus:outline-none" placeholder="เบอร์ภายใน หรือมือถือ">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">อีเมล</label>
+                                <input type="email" id="email" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ink focus:outline-none" placeholder="email@company.com">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section 2: ข้อมูลอุปกรณ์และสถานที่ -->
+                    <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <h3 class="text-ink font-semibold mb-3 flex items-center"><i class="fa-solid fa-location-dot mr-2"></i>สถานที่และอุปกรณ์</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">สถานที่/ห้อง <span class="text-red-500">*</span></label>
+                                <input type="text" id="location" required class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ink focus:outline-none" placeholder="เช่น ชั้น 3 ห้องประชุมใหญ่">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">รหัสทรัพย์สิน (Asset ID)</label>
+                                <input type="text" id="assetId" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ink focus:outline-none" placeholder="เช่น PC-001 (ถ้ามี)">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section 3: รายละเอียดปัญหา -->
+                    <div>
+                        <h3 class="text-ink font-semibold mb-3 flex items-center"><i class="fa-solid fa-circle-exclamation mr-2"></i>รายละเอียดปัญหา</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">หัวข้อปัญหา <span class="text-red-500">*</span></label>
+                                <input type="text" id="subject" required class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ink focus:outline-none" placeholder="สรุปปัญหาสั้นๆ">
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">ประเภท</label>
+                                    <select id="category" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ink focus:outline-none">
+                                        <option value="Hardware">Hardware (อุปกรณ์)</option>
+                                        <option value="Software">Software (โปรแกรม)</option>
+                                        <option value="Network">Network (อินเทอร์เน็ต)</option>
+                                        <option value="Printer">Printer (เครื่องพิมพ์)</option>
+                                        <option value="Access">User/Password Access</option>
+                                        <option value="Other">อื่นๆ</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">ความเร่งด่วน</label>
+                                    <select id="priority" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ink focus:outline-none">
+                                        <option value="Low">Low (รอได้)</option>
+                                        <option value="Medium" selected>Medium (ปกติ)</option>
+                                        <option value="High">High (ด่วน)</option>
+                                        <option value="Critical">Critical (วิกฤต/งานหยุดชะงัก)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">รายละเอียดเพิ่มเติม</label>
+                                <textarea id="description" rows="4" required class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ink focus:outline-none" placeholder="อธิบายอาการที่พบ..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pt-4 border-t">
+                        <button type="submit" id="submitBtn" class="w-full bg-ink hover:bg-ink-soft text-white font-bold py-3 px-4 rounded-xl shadow-lg transform active:scale-95 transition duration-200 flex justify-center items-center gap-2 text-lg">
+                            <i class="fa-solid fa-paper-plane"></i> ส่งแจ้งซ่อม
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- VIEW 2: ADMIN DASHBOARD (หน้าเจ้าหน้าที่) -->
+        <div id="view-admin" class="hidden fade-in">
+            <!-- Stats Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div class="bg-white p-5 rounded-xl shadow border-b-4 border-gray-500 flex justify-between items-center">
+                    <div>
+                        <div class="text-gray-500 text-sm">Tickets ทั้งหมด</div>
+                        <div class="text-3xl font-bold text-gray-700" id="stat-total">0</div>
+                    </div>
+                    <i class="fa-solid fa-folder-open text-3xl text-gray-300"></i>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow border-b-4 border-blue-500 flex justify-between items-center">
+                    <div>
+                        <div class="text-ink-soft text-sm font-semibold">รอรับเรื่อง (Open)</div>
+                        <div class="text-3xl font-bold text-blue-700" id="stat-open">0</div>
+                    </div>
+                    <i class="fa-solid fa-inbox text-3xl text-slate-300"></i>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow border-b-4 border-amber-500 flex justify-between items-center">
+                    <div>
+                        <div class="text-amber-600 text-sm font-semibold">กำลังดำเนินการ</div>
+                        <div class="text-3xl font-bold text-amber-700" id="stat-progress">0</div>
+                    </div>
+                    <i class="fa-solid fa-screwdriver-wrench text-3xl text-amber-200"></i>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow border-b-4 border-teal-600 flex justify-between items-center">
+                    <div>
+                        <div class="text-teal-700 text-sm font-semibold">เสร็จสิ้นแล้ว</div>
+                        <div class="text-3xl font-bold text-teal-800" id="stat-resolved">0</div>
+                    </div>
+                    <i class="fa-solid fa-check-double text-3xl text-teal-200"></i>
+                </div>
+            </div>
+
+            <!-- Ticket Table/List -->
+            <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                <div class="px-6 py-4 border-b flex flex-col md:flex-row justify-between items-center bg-gray-50 gap-4">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-list-check text-blue-600"></i>
+                        <h2 class="text-lg font-bold text-ink">รายการแจ้งซ่อม (Ticket List)</h2>
+                    </div>
+                    <div class="flex gap-2 text-sm">
+                         <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded">รวม <span id="count-display">0</span> รายการ</span>
+                    </div>
+                </div>
+                
+                <!-- Table Header (Desktop only) -->
+                <div class="hidden md:grid grid-cols-12 gap-4 px-6 py-3 bg-gray-100 text-sm font-semibold text-gray-600 border-b">
+                    <div class="col-span-1">Status</div>
+                    <div class="col-span-2">Date/Time</div>
+                    <div class="col-span-3">Issue/User</div>
+                    <div class="col-span-2">Department/Loc</div>
+                    <div class="col-span-2">Category/Priority</div>
+                    <div class="col-span-2 text-right">Actions</div>
+                </div>
+
+                <div id="ticketList" class="divide-y divide-gray-100 max-h-[700px] overflow-y-auto">
+                    <!-- Tickets will be loaded here -->
+                    <div class="p-12 text-center text-gray-400">
+                        <i class="fa-solid fa-spinner fa-spin text-3xl mb-3"></i>
+                        <p>กำลังโหลดข้อมูล...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 1. DETAIL MODAL (เพิ่มใหม่ใน Version 3) -->
+    <div id="detailModal" class="fixed inset-0 bg-black bg-opacity-60 hidden flex items-center justify-center z-50 backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] modal-enter relative">
+            
+            <!-- Modal Header -->
+            <div class="bg-gradient-to-r bg-ink p-5 flex justify-between items-start text-white">
+                <div class="w-11/12">
+                    <div class="text-slate-300 text-xs font-mono mb-1" id="m-id">#TICKET-ID</div>
+                    <h3 class="text-xl font-bold leading-tight" id="m-subject">Subject goes here</h3>
+                </div>
+                <button onclick="closeDetailModal()" class="text-slate-300 hover:text-white transition p-1">
+                    <i class="fa-solid fa-xmark text-2xl"></i>
+                </button>
+            </div>
+
+            <!-- Modal Body (Scrollable) -->
+            <div class="p-6 overflow-y-auto bg-gray-50 flex-grow">
+                
+                <!-- Status & Priority Bar -->
+                <div class="flex flex-wrap gap-3 mb-6">
+                    <span id="m-status-badge"></span>
+                    <span id="m-priority-badge"></span>
+                    <span id="m-category-badge" class="px-3 py-1 rounded-full bg-gray-200 text-gray-700 text-sm font-medium"></span>
+                    <span class="ml-auto text-gray-500 text-sm flex items-center"><i class="fa-regular fa-clock mr-1"></i> <span id="m-date"></span></span>
+                </div>
+
+                <!-- Description Box -->
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6">
+                    <h4 class="text-sm font-bold text-gray-500 uppercase mb-2">รายละเอียดปัญหา</h4>
+                    <p class="text-ink whitespace-pre-line leading-relaxed" id="m-description"></p>
+                </div>
+
+                <!-- Info Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- User Info -->
+                    <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-400">
+                        <h4 class="text-sm font-bold text-gray-500 uppercase mb-3"><i class="fa-solid fa-user mr-1"></i> ข้อมูลผู้แจ้ง</h4>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between"><span class="text-gray-500">ชื่อ:</span> <span class="font-medium" id="m-requester"></span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">แผนก:</span> <span class="font-medium" id="m-dept"></span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">โทร:</span> <span class="font-medium" id="m-phone"></span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">อีเมล:</span> <span class="font-medium" id="m-email"></span></div>
+                        </div>
+                    </div>
+
+                    <!-- Location Info -->
+                    <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-purple-400">
+                        <h4 class="text-sm font-bold text-gray-500 uppercase mb-3"><i class="fa-solid fa-location-dot mr-1"></i> สถานที่ & อุปกรณ์</h4>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between"><span class="text-gray-500">สถานที่:</span> <span class="font-medium" id="m-location"></span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">Asset ID:</span> <span class="font-medium font-mono bg-gray-100 px-2 rounded" id="m-asset"></span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="bg-white p-4 border-t flex justify-end gap-3">
+                 <button onclick="closeDetailModal()" class="px-5 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium transition">ปิดหน้าต่าง</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-5 right-5 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-xl transform translate-y-20 opacity-0 transition-all duration-300 z-50 flex items-center gap-3">
+        <i id="toast-icon" class="fa-solid fa-circle-check text-teal-300"></i>
+        <span id="toast-message">Success</span>
+    </div>
+
+    <!-- Delete Modal (อันเดิม) -->
+    <div id="deleteModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-96 shadow-xl">
+            <h3 class="text-lg font-bold text-ink mb-2">ยืนยันการลบ?</h3>
+            <p class="text-gray-600 mb-6">คุณต้องการลบ Ticket นี้ถาวรใช่หรือไม่?</p>
+            <div class="flex justify-end gap-3">
+                <button onclick="closeDeleteModal()" class="px-4 py-2 bg-gray-200 text-ink rounded hover:bg-gray-300 transition">ยกเลิก</button>
+                <button id="confirmDeleteBtn" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition">ยืนยันลบ</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase Scripts -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        
+        let currentUser = null;
+        let allTickets = []; // ตัวแปรเก็บข้อมูลทั้งหมด เพื่อใช้ใน Modal
+        let ticketToDeleteId = null;
+
+        // Auth
+        async function initAuth() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) { console.error("Auth Failed", error); }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            const statusDiv = document.getElementById('connection-status');
+            if (user) {
+                statusDiv.innerHTML = `<div class="w-2 h-2 bg-teal-400 rounded-full"></div> <span class="hidden md:inline">Online</span>`;
+                setupRealtimeListener();
+            } else {
+                statusDiv.innerHTML = `<div class="w-2 h-2 bg-red-400 rounded-full"></div> <span class="hidden md:inline">Offline</span>`;
+            }
+        });
+
+        window.switchView = (viewName) => {
+            const userView = document.getElementById('view-user');
+            const adminView = document.getElementById('view-admin');
+            const btnUser = document.getElementById('btn-nav-user');
+            const btnAdmin = document.getElementById('btn-nav-admin');
+
+            if (viewName === 'user') {
+                userView.classList.remove('hidden');
+                adminView.classList.add('hidden');
+                btnUser.classList.add('bg-white', 'text-ink', 'shadow');
+                btnUser.classList.remove('text-blue-100', 'hover:bg-blue-600');
+                btnAdmin.classList.remove('bg-white', 'text-ink', 'shadow');
+                btnAdmin.classList.add('text-blue-100', 'hover:bg-blue-600');
+            } else {
+                userView.classList.add('hidden');
+                adminView.classList.remove('hidden');
+                btnAdmin.classList.add('bg-white', 'text-ink', 'shadow');
+                btnAdmin.classList.remove('text-blue-100', 'hover:bg-blue-600');
+                btnUser.classList.remove('bg-white', 'text-ink', 'shadow');
+                btnUser.classList.add('text-blue-100', 'hover:bg-blue-600');
+            }
+        };
+
+        function setupRealtimeListener() {
+            if (!currentUser) return;
+            const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'tickets'));
+
+            onSnapshot(q, (snapshot) => {
+                const tickets = [];
+                snapshot.forEach((doc) => {
+                    tickets.push({ id: doc.id, ...doc.data() });
+                });
+                
+                tickets.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+                
+                // เก็บลงตัวแปร Global
+                allTickets = tickets;
+
+                renderTickets(tickets);
+                updateStats(tickets);
+            });
+        }
+
+        function renderTickets(tickets) {
+            const listContainer = document.getElementById('ticketList');
+            document.getElementById('count-display').innerText = tickets.length;
+
+            if (tickets.length === 0) {
+                listContainer.innerHTML = `<div class="p-12 text-center text-gray-500">ไม่มีข้อมูลการแจ้งซ่อม</div>`;
+                return;
+            }
+
+            listContainer.innerHTML = tickets.map(ticket => {
+                const date = ticket.timestamp ? new Date(ticket.timestamp.seconds * 1000).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+                
+                let priorityClass = 'bg-gray-100 text-gray-600';
+                if(ticket.priority === 'High') priorityClass = 'bg-orange-100 text-orange-700 border border-orange-200';
+                if(ticket.priority === 'Critical') priorityClass = 'bg-red-100 text-red-700 border border-red-200';
+                
+                let statusBadge = '';
+                if(ticket.status === 'Open') statusBadge = '<span class="px-2 py-1 rounded text-xs font-bold bg-blue-100 text-blue-700 border border-blue-200">Open</span>';
+                if(ticket.status === 'In Progress') statusBadge = '<span class="px-2 py-1 rounded text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">In Progress</span>';
+                if(ticket.status === 'Resolved') statusBadge = '<span class="px-2 py-1 rounded text-xs font-bold bg-teal-100 text-teal-800 border border-teal-200">Resolved</span>';
+
+                return `
+                <div class="group hover:bg-blue-50 transition duration-150 p-4 md:grid md:grid-cols-12 md:gap-4 md:items-center border-b last:border-0 relative">
+                    
+                    <!-- Mobile View Header -->
+                    <div class="md:hidden flex justify-between items-start mb-2">
+                        <div>${statusBadge}</div>
+                        <div class="text-xs text-gray-500">${date}</div>
+                    </div>
+
+                    <!-- Col 1: Status -->
+                    <div class="hidden md:block col-span-1">
+                        ${statusBadge}
+                    </div>
+
+                    <!-- Col 2: Date -->
+                    <div class="hidden md:block col-span-2 text-xs text-gray-500">
+                        ${date}
+                        <div class="font-mono text-[10px] text-gray-300 mt-1">#${ticket.id.slice(0,6)}</div>
+                    </div>
+
+                    <!-- Col 3: Issue/User (CLICKABLE) -->
+                    <div class="col-span-3 mb-2 md:mb-0 cursor-pointer" onclick="window.openDetailModal('${ticket.id}')">
+                        <div class="font-bold text-ink text-base group-hover:text-blue-700 flex items-center gap-2">
+                            ${escapeHtml(ticket.subject)}
+                        </div>
+                        <div class="text-sm text-gray-600 truncate">${escapeHtml(ticket.requesterName)}</div>
+                        <div class="md:hidden text-sm text-gray-500 mt-1 line-clamp-2">${escapeHtml(ticket.description)}</div>
+                        <!-- Mobile: Click hint -->
+                         <div class="md:hidden text-xs text-blue-500 mt-1 font-semibold">แตะเพื่อดูรายละเอียด</div>
+                    </div>
+
+                    <!-- Col 4: Dept/Location -->
+                    <div class="col-span-2 text-sm text-gray-600 mb-2 md:mb-0">
+                        <div class="flex items-center gap-1"><i class="fa-solid fa-building text-gray-400 text-xs"></i> ${escapeHtml(ticket.department || '-')}</div>
+                        <div class="flex items-center gap-1"><i class="fa-solid fa-location-dot text-gray-400 text-xs"></i> ${escapeHtml(ticket.location || '-')}</div>
+                    </div>
+
+                    <!-- Col 5: Cat/Priority -->
+                    <div class="col-span-2 mb-2 md:mb-0 flex md:block items-center gap-2">
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-600">${escapeHtml(ticket.category)}</span>
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded ${priorityClass}">${escapeHtml(ticket.priority)}</span>
+                    </div>
+
+                    <!-- Col 6: Actions (ADDED VIEW BUTTON) -->
+                    <div class="col-span-2 flex justify-end items-center gap-2 mt-2 md:mt-0">
+                        <!-- View Details Button -->
+                         <button onclick="window.openDetailModal('${ticket.id}')" class="p-2 text-blue-400 hover:text-blue-700 bg-white border border-gray-200 hover:border-blue-300 rounded shadow-sm transition" title="ดูรายละเอียด">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+
+                        <select onchange="window.updateTicketStatus('${ticket.id}', this.value)" class="text-xs border rounded p-1.5 focus:ring-ink bg-white shadow-sm">
+                            <option value="Open" ${ticket.status === 'Open' ? 'selected' : ''}>Open</option>
+                            <option value="In Progress" ${ticket.status === 'In Progress' ? 'selected' : ''}>Progress</option>
+                            <option value="Resolved" ${ticket.status === 'Resolved' ? 'selected' : ''}>Resolved</option>
+                        </select>
+                        <button onclick="window.confirmDelete('${ticket.id}')" class="p-2 text-gray-400 hover:text-red-600 rounded hover:bg-red-50 transition" title="ลบรายการ">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        function updateStats(tickets) {
+            document.getElementById('stat-total').innerText = tickets.length;
+            document.getElementById('stat-open').innerText = tickets.filter(t => t.status === 'Open').length;
+            document.getElementById('stat-progress').innerText = tickets.filter(t => t.status === 'In Progress').length;
+            document.getElementById('stat-resolved').innerText = tickets.filter(t => t.status === 'Resolved').length;
+        }
+
+        document.getElementById('ticketForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!currentUser) { showToast("ยังไม่เชื่อมต่อระบบ", "error"); return; }
+            
+            const btn = document.getElementById('submitBtn');
+            const originalContent = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> กำลังส่งข้อมูล...`;
+
+            try {
+                const newTicket = {
+                    requesterName: document.getElementById('requesterName').value,
+                    department: document.getElementById('department').value,
+                    phone: document.getElementById('phone').value,
+                    email: document.getElementById('email').value,
+                    location: document.getElementById('location').value,
+                    assetId: document.getElementById('assetId').value,
+                    subject: document.getElementById('subject').value,
+                    category: document.getElementById('category').value,
+                    priority: document.getElementById('priority').value,
+                    description: document.getElementById('description').value,
+                    status: 'Open',
+                    timestamp: serverTimestamp()
+                };
+
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'tickets'), newTicket);
+                showToast("บันทึกการแจ้งซ่อมสำเร็จ!");
+                document.getElementById('ticketForm').reset();
+            } catch (error) {
+                console.error(error);
+                showToast("เกิดข้อผิดพลาด", "error");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalContent;
+            }
+        });
+
+        window.updateTicketStatus = async (id, status) => {
+            try {
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tickets', id), { status });
+                showToast("อัปเดตสถานะแล้ว");
+                // ถ้า Modal เปิดอยู่และเป็น Ticket เดียวกัน ให้อัปเดต Badge ใน Modal ด้วย
+                const modal = document.getElementById('detailModal');
+                if (!modal.classList.contains('hidden')) {
+                   // อาจจะ reload modal data หรือปล่อยให้ realtime listener ทำงาน (ซึ่งมันจะ render list ใหม่แต่ modal อาจจะไม่เปลี่ยน)
+                   // เพื่อความง่าย ปล่อยให้ Realtime อัปเดต list แต่ user ต้องเปิด modal ใหม่ถ้าอยากเห็น badge เปลี่ยน หรือเขียน logic เพิ่ม
+                   // แต่ใน code นี้ ผมดึงจาก allTickets ดังนั้นถ้าเปิดใหม่ข้อมูลจะ update
+                }
+            } catch (err) { showToast("Error updating status", "error"); }
+        };
+
+        // --- MODAL LOGIC (New) ---
+        window.openDetailModal = (id) => {
+            const ticket = allTickets.find(t => t.id === id);
+            if (!ticket) return;
+
+            // Fill Data
+            document.getElementById('m-id').innerText = `#${ticket.id}`;
+            document.getElementById('m-subject').innerText = ticket.subject;
+            document.getElementById('m-description').innerText = ticket.description;
+            document.getElementById('m-requester').innerText = ticket.requesterName;
+            document.getElementById('m-dept').innerText = ticket.department || '-';
+            document.getElementById('m-phone').innerText = ticket.phone || '-';
+            document.getElementById('m-email').innerText = ticket.email || '-';
+            document.getElementById('m-location').innerText = ticket.location || '-';
+            document.getElementById('m-asset').innerText = ticket.assetId || '-';
+            document.getElementById('m-date').innerText = ticket.timestamp ? new Date(ticket.timestamp.seconds * 1000).toLocaleString('th-TH') : '-';
+            document.getElementById('m-category-badge').innerText = ticket.category;
+
+            // Badges Style
+            const statusEl = document.getElementById('m-status-badge');
+            if(ticket.status === 'Open') statusEl.innerHTML = '<span class="px-3 py-1 rounded-full bg-blue-100 text-blue-700 font-bold text-sm">Open</span>';
+            else if(ticket.status === 'In Progress') statusEl.innerHTML = '<span class="px-3 py-1 rounded-full bg-amber-100 text-amber-800 font-bold text-sm">In Progress</span>';
+            else statusEl.innerHTML = '<span class="px-3 py-1 rounded-full bg-teal-100 text-teal-800 font-bold text-sm">Resolved</span>';
+
+            const prioEl = document.getElementById('m-priority-badge');
+            if(ticket.priority === 'High') prioEl.innerHTML = '<span class="px-3 py-1 rounded-full bg-orange-100 text-orange-700 font-bold text-sm">High Priority</span>';
+            else if(ticket.priority === 'Critical') prioEl.innerHTML = '<span class="px-3 py-1 rounded-full bg-red-100 text-red-700 font-bold text-sm">Critical</span>';
+            else prioEl.innerHTML = `<span class="px-3 py-1 rounded-full bg-gray-100 text-gray-600 font-bold text-sm">${ticket.priority}</span>`;
+
+            document.getElementById('detailModal').classList.remove('hidden');
+        };
+
+        window.closeDetailModal = () => {
+            document.getElementById('detailModal').classList.add('hidden');
+        };
+
+        // --- DELETE LOGIC ---
+        window.confirmDelete = (id) => { ticketToDeleteId = id; document.getElementById('deleteModal').classList.remove('hidden'); };
+        window.closeDeleteModal = () => { ticketToDeleteId = null; document.getElementById('deleteModal').classList.add('hidden'); };
+        
+        document.getElementById('confirmDeleteBtn').addEventListener('click', async () => {
+            if(!ticketToDeleteId) return;
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tickets', ticketToDeleteId));
+                showToast("ลบข้อมูลสำเร็จ");
+                closeDeleteModal();
+            } catch(e) { showToast("ลบไม่สำเร็จ", "error"); }
+        });
+
+        function escapeHtml(text) {
+            if (!text) return "";
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        function showToast(msg, type="success") {
+            const t = document.getElementById('toast');
+            document.getElementById('toast-message').innerText = msg;
+            document.getElementById('toast-icon').className = type === "success" ? "fa-solid fa-circle-check text-teal-300" : "fa-solid fa-circle-xmark text-red-400";
+            t.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => t.classList.add('translate-y-20', 'opacity-0'), 3000);
+        }
+
+        initAuth();
+    </script>
+</body>
+</html>

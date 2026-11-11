@@ -1,8 +1,10 @@
 import React from 'react';
+import EmployeeAvatar from './EmployeeAvatar';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Computer, LogOut, LayoutDashboard, Ticket, User, BarChart2, Database, ChevronRight } from 'lucide-react';
+import { Computer, LogOut, LayoutDashboard, Ticket, User, BarChart2, Database, ChevronRight, Monitor, X, ShieldCheck, History } from 'lucide-react';
 import logodaikin from '../../public/icon-daikin (Custom).png';
-export default function Sidebar({ user, isITStaff, logout }) {
+
+export default function Sidebar({ user, isITStaff, logout, mobileOpen, setMobileOpen }) {
   const navigate = useNavigate();
   const location = useLocation();
   const currentView = new URLSearchParams(location.search).get('view') || 'all';
@@ -12,147 +14,246 @@ export default function Sidebar({ user, isITStaff, logout }) {
     return location.pathname === path;
   };
 
-  // Helper สำหรับสร้างปุ่มเมนูให้ดูคลีนขึ้น
-  const MenuButton = ({ onClick, icon: Icon, label, active, colorClass, adminBadge }) => (
+  const handleMenuClick = (path) => {
+    navigate(path);
+    if (setMobileOpen) setMobileOpen(false); // Close mobile drawer
+  };
+
+  // Helper สำหรับสร้างปุ่มเมนูที่ปรับปรุงแล้ว (สไตล์ Modern & Formal ลดความโค้งมน)
+  const MenuButton = ({ onClick, icon: Icon, label, active, adminBadge }) => (
     <button
       onClick={onClick}
-      className={`w-full group flex items-center gap-3 p-3 rounded-2xl transition-all duration-300 mb-1 relative overflow-hidden ${
-        active 
-          ? `${colorClass} shadow-sm` 
-          : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+      className={`relative w-full min-h-[44px] group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 mb-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600 ${
+        active
+          ? 'bg-ink text-white shadow-soft'
+          : 'text-ink-soft hover:text-ink hover:bg-paper hover:translate-x-0.5'
       }`}
     >
-      {active && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-current rounded-r-full" />}
-      <Icon className={`w-5 h-5 transition-transform duration-300 ${active ? 'scale-110' : 'group-hover:scale-110'}`} />
-      <span className="font-semibold text-sm tracking-wide">{label}</span>
+      {/* ไอคอน */}
+      <Icon className={`w-4 h-4 xl:w-5 xl:h-5 transition-colors duration-200 ${
+        active ? 'text-white' : 'text-muted group-hover:text-ink'
+      }`} />
+
+      {/* ข้อความ */}
+      <span className={`font-semibold text-[13px] xl:text-sm tracking-wide whitespace-nowrap truncate block w-full text-left ${
+        active ? 'text-white' : ''
+      }`}>
+        {label}
+      </span>
+
+      {/* Admin Badge */}
       {adminBadge && !active && (
-        <span className="ml-auto text-[9px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-lg font-bold uppercase">Admin</span>
+        <span className="ml-auto rounded-full bg-surface text-muted px-2 py-0.5 text-[10px] font-semibold border border-line">
+          Admin
+        </span>
       )}
-      {active && <ChevronRight className="ml-auto w-4 h-4 opacity-40" />}
+
+      {/* ลูกศรขวาเมื่อ Active */}
+      {active && <ChevronRight className="ml-auto w-3.5 h-3.5 xl:w-4 xl:h-4 text-white/70" />}
     </button>
   );
 
   return (
-    <aside className="w-72 bg-slate-50/50 h-screen p-4 hidden md:flex flex-col z-10">
-      <div className="bg-white border border-slate-200/60 rounded-[2rem] flex flex-col h-full shadow-xl shadow-slate-200/50 overflow-hidden">
-        
-        {/* Header Section */}
-        <div className="p-6 pb-2">
-          <div className="flex items-center gap-3 px-2">
-            <div className="relative">
-              <div className="absolute inset-0 bg-white-500 blur-md opacity-20 animate-pulse"></div>
-              <div className="relative bg-white-600  p-2 rounded-xl text-white shadow-slate-200 shadow-lg">
-                <img src={logodaikin} alt="DAIKIN Logo" className="w-8 h-8 object-contain" />
-                {/* <Computer className="w-6 h-6" /> */}
-              </div>
+    <>
+      {/* Mobile Backdrop overlay */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-40 md:hidden transition-opacity"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      <aside 
+        className={`w-64 xl:w-72 bg-surface border-r border-line h-screen h-[100dvh] flex flex-col z-50 transition-transform duration-300
+          ${mobileOpen 
+            ? 'fixed inset-y-0 left-0 translate-x-0 shadow-2xl' 
+            : 'hidden md:flex -translate-x-full md:translate-x-0'}
+        `}
+      >
+        {/* Header Section (Flat & Formal) */}
+        <div className="h-16 xl:h-20 flex items-center justify-between px-4 xl:px-6 bg-surface border-b border-line shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="bg-white p-1.5 rounded-lg shadow-sm flex items-center justify-center border border-slate-200">
+              <img src={logodaikin} alt="DAIKIN Logo" className="w-5 h-5 xl:w-6 xl:h-6 object-contain" />
             </div>
-            <span className="text-xl font-black text-slate-800 tracking-tighter">
-              IT HELP<span className="text-red-800">|</span><span className="text-indigo-600">DESK</span>
+            <span className="text-lg xl:text-xl font-display font-bold text-ink tracking-tight flex items-center">
+              IT HELP<span className="text-muted mx-1 font-normal">|</span><span className="text-blue-600 font-bold">DESK</span>
             </span>
           </div>
+
+          {/* Mobile Close Button */}
+          {mobileOpen && (
+            <button 
+              onClick={() => setMobileOpen(false)}
+              aria-label="Close navigation menu" className="flex h-11 w-11 items-center justify-center bg-paper hover:bg-line text-ink rounded-lg md:hidden transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
-        {/* User Profile Card */}
-        <div className="px-6 py-4">
-          <div className="bg-gradient-to-b from-slate-50 to-white border border-slate-100 rounded-3xl p-4 flex flex-col items-center shadow-sm">
-            <div className="relative group cursor-default">
-              <div className="absolute inset-0 bg-indigo-200 rounded-2xl blur-lg opacity-0 group-hover:opacity-40 transition-opacity"></div>
-              <div className="relative w-20 h-22 rounded-2xl overflow-hidden border-2 border-white shadow-md bg-indigo-50 flex items-center justify-center">
-                {user?.empPic ? (
-                  <img src={user.empPic} alt={user?.name} className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none'; }} />
-                ) : (
-                  <span className="text-indigo-600 font-bold text-2xl">{user?.name?.charAt(0) || 'U'}</span>
-                )}
-              </div>
+        {/* User Profile Section (Corporate Structure) */}
+        <div className="p-5 border-b border-line bg-surface shrink-0">
+          <div className="flex items-start gap-3 xl:gap-4">
+            <div className="relative shrink-0">
+              <EmployeeAvatar src={user?.empPic} name={user?.name} size={56} className="rounded-full ring-1 ring-line" />
+              <div className="absolute -bottom-1 -right-1 bg-green-500 w-3.5 h-3.5 xl:w-4 xl:h-4 rounded-full border-2 border-surface"></div>
             </div>
-            
-            <div className="mt-3 text-center w-full">
-              <p className="text-slate-900 font-bold text-sm truncate leading-none">{user?.name || 'User Name'}</p>
-              <p className="text-slate-400 text-[10px] mt-1.5 font-medium truncate uppercase tracking-wider">{user?.email || 'no-email@company.com'}</p>
-              
-              <div className="mt-3 pt-3 border-t border-slate-100 flex flex-col gap-1">
-                <p className="text-slate-500 text-[10px] font-semibold">{user?.sect_long || user?.sect || 'Department'}</p>
-                <p className="text-slate-400 text-[9px]">CC: {user?.cost_center || 'N/A'}</p>
-              </div>
 
-              <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold tracking-tight shadow-sm ${
-                isITStaff ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-100'
+            <div className="flex-1 min-w-0 pt-0.5">
+              <p className="text-ink font-semibold text-sm truncate">
+                {user?.name || 'User Name'}
+              </p>
+              <p className="text-muted text-xs truncate mb-1.5">
+                {user?.email || 'no-email@company.com'}
+              </p>
+              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold border ${
+                isITStaff
+                  ? 'bg-ink text-white border-ink'
+                  : 'bg-teal/10 text-teal border-teal/25'
               }`}>
-                {isITStaff ? '✨ IT STAFF' : '👤 EMPLOYEE'}
-              </div>
+                {isITStaff ? 'IT STAFF' : 'USER'}
+              </span>
+            </div>
+          </div>
+
+          {/* ปรับ grid โดยเพิ่ม gap-x-2 เพื่อเว้นช่องว่างแนวนอน */}
+          <div className="mt-4 pt-4 border-t border-line grid grid-cols-2 gap-y-3 gap-x-3 text-left">
+            {/* ใส่ col-span-2 ให้ Section เพื่อให้มันอยู่เต็มบรรทัดบน */}
+            <div className="col-span-2">
+              <p className="text-muted text-[11px] mb-0.5">Section</p>
+              <p className="text-ink-soft font-medium text-xs truncate pr-2" title={user?.sect_long || user?.sect || 'Department'}>
+                {user?.sect_long || user?.sect || 'DEPARTMENT'}
+              </p>
+            </div>
+            {/* Position และ Cost Center จะถูกแบ่งคนละ 50% ในบรรทัดเดียวกันอัตโนมัติ */}
+            <div>
+              <p className="text-muted text-[11px] mb-0.5">Position</p>
+              <p className="text-ink-soft font-medium text-xs truncate">
+                {user?.Position || 'POSITION'}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted text-[11px] mb-0.5">Cost Center</p>
+              <p className="text-ink-soft font-medium text-xs truncate">
+                {user?.cost_center || 'N/A'}
+              </p>
             </div>
           </div>
         </div>
 
         {/* Navigation Menu */}
-        <nav className="flex-1 px-4 py-2 space-y-1 overflow-y-auto custom-scrollbar">
-          <div className="px-4 mb-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">General</span>
+        <div className="flex-1 overflow-y-auto py-4 custom-scrollbar">
+          
+          <div className="px-4 mb-4">
+            <h3 className="px-3 text-[11px] font-semibold text-muted mb-2">
+              General
+            </h3>
+            <nav className="space-y-0.5">
+              <MenuButton
+                label="Dashboard"
+                icon={LayoutDashboard}
+                active={isActive('/dashboard')}
+                onClick={() => handleMenuClick('/dashboard')}
+              />
+              <MenuButton
+                label="All Tickets"
+                icon={Ticket}
+                active={isActive('/') && currentView === 'all'}
+                onClick={() => handleMenuClick('/?view=all')}
+              />
+              <MenuButton
+                label="My Tickets"
+                icon={User}
+                active={isActive('/') && currentView === 'mine'}
+                onClick={() => handleMenuClick('/?view=mine')}
+              />
+            </nav>
           </div>
-          
-          <MenuButton 
-            label="Dashboard" 
-            icon={LayoutDashboard} 
-            active={isActive('/dashboard')} 
-            colorClass="bg-indigo-50 text-indigo-700"
-            onClick={() => navigate('/dashboard')} 
-          />
-          
-          <MenuButton 
-            label="All Tickets" 
-            icon={Ticket} 
-            active={isActive('/') && currentView === 'all'} 
-            colorClass="bg-indigo-50 text-indigo-700"
-            onClick={() => navigate('/?view=all')} 
-          />
-
-          <MenuButton 
-            label="My Tickets" 
-            icon={User} 
-            active={isActive('/') && currentView === 'mine'} 
-            colorClass="bg-indigo-50 text-indigo-700"
-            onClick={() => navigate('/?view=mine')} 
-          />
 
           {isITStaff && (
-            <div className="mt-6">
-              <div className="px-4 mb-2">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Admin Tools</span>
-              </div>
-              <MenuButton 
-                label="Reports" 
-                icon={BarChart2} 
-                active={isActive('/report')} 
-                colorClass="bg-emerald-50 text-emerald-700"
-                onClick={() => navigate('/report')} 
-              />
-              <MenuButton 
-                label="Master Data" 
-                icon={Database} 
-                active={isActive('/master')} 
-                colorClass="bg-violet-50 text-violet-700"
-                onClick={() => navigate('/master')} 
-              />
+            <div className="px-4 mb-4">
+              <h3 className="px-3 text-[11px] font-semibold text-muted mb-2">
+                Admin Tools
+              </h3>
+              <nav className="space-y-0.5">
+                <MenuButton
+                  label="Reports"
+                  icon={BarChart2}
+                  active={isActive('/report')}
+                  onClick={() => handleMenuClick('/report')}
+                />
+                {Array.isArray(user?.permissions) && user.permissions.includes('master.edit') && (
+                  <MenuButton
+                    label="Master Data"
+                    icon={Database}
+                    active={isActive('/master')}
+                    onClick={() => handleMenuClick('/master')}
+                    adminBadge={true}
+                  />
+                )}
+                {Array.isArray(user?.permissions) && user.permissions.includes('users.manage') && (
+                  <MenuButton
+                    label="จัดการสิทธิ์"
+                    icon={ShieldCheck}
+                    active={isActive('/admin/users')}
+                    onClick={() => handleMenuClick('/admin/users')}
+                    adminBadge={true}
+                  />
+                )}
+                {Array.isArray(user?.permissions) && user.permissions.includes('logs.view') && (
+                  <MenuButton
+                    label="ประวัติการเข้าสู่ระบบ"
+                    icon={History}
+                    active={isActive('/admin/login-logs')}
+                    onClick={() => handleMenuClick('/admin/login-logs')}
+                    adminBadge={true}
+                  />
+                )}
+              </nav>
             </div>
           )}
-        </nav>
+        </div>
 
         {/* Bottom Section / Logout */}
-        <div className="p-4 mt-auto border-t border-slate-50">
+        <div className="p-4 border-t border-line bg-surface shrink-0">
           <button
             onClick={logout}
-            className="w-full flex items-center justify-center gap-3 p-3.5 rounded-2xl text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all duration-300 font-bold text-sm border border-transparent hover:border-red-100 shadow-sm hover:shadow-red-100 shadow-transparent"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 mb-3 xl:mb-4 text-sm font-semibold min-h-[44px] text-ink-soft hover:text-ink bg-paper hover:bg-line border border-line rounded-lg transition-colors"
           >
-            <LogOut className="w-5 h-5" />
+            <LogOut className="w-4 h-4" />
             <span>Logout</span>
           </button>
-          
-          <div className="mt-5 text-center flex flex-col items-center justify-center gap-0.5">
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Developed by</p>
-            <p className="text-[11px] font-black text-indigo-600 tracking-wider bg-indigo-50 px-3 py-1 rounded-full w-max">NATTHAWUT.Y</p>
+
+          <div className="text-center flex flex-col items-center justify-center">
+            <span className="text-[11px] text-muted mb-1">
+              Developed By
+            </span>
+            <span className="text-[11px] font-semibold text-ink-soft bg-paper px-2 py-0.5 rounded-full border border-line">
+              NATTHAWUT.Y
+            </span>
           </div>
         </div>
-      </div>
-    </aside>
+        
+      </aside>
+
+      {/* Global Style for Custom Scrollbar (สามารถนำไปใส่ใน index.css หรือ global css ของโปรเจกต์ได้) */}
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #475569; 
+        }
+      `}</style>
+    </>
   );
 }
+

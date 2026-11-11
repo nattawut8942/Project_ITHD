@@ -1,22 +1,40 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ticketAPI } from '../utils/apiClient';
+import { format } from 'date-fns';
+import * as signalR from '@microsoft/signalr';
 import Sidebar from '../components/Sidebar';
 import {
-  Computer, LogOut, Monitor, LayoutDashboard, Plus, Clock,
-  CheckCircle, MapPin, X, User, Search, ChevronRight,
-  Paperclip, AlertCircle, Laptop, Wrench, Grid, List, ArrowRight
+  Search, Filter, Plus, Clock, CheckCircle,
+  AlertCircle, X, MessageSquare, Monitor, FileText,
+  User, LayoutDashboard, Settings, MapPin, LoaderCircle, Loader,
+  Paperclip, Wrench, Laptop, Briefcase, Calendar, Info,
+  ChevronRight, ArrowRight, Grid, List, AlertTriangle, Ticket,
+  Inbox, Sparkles
 } from 'lucide-react';
-import { getDeviceTypeColor, getColorGradient } from '../utils/styleHelpers';
+import { getDeviceTypeColor, getColorGradient, getRequestTypeIcon, formatDateShort, formatThaiDateTime, getStatusStyle, getStatusLabel as displayStatusLabel } from '../utils/styleHelpers';
+import StatusBadge from '../components/StatusBadge';
 import OpenTicketModal from '../components/OpenTicketModal';
 import TicketDetailModal from '../components/TicketDetailModal';
+import ConfirmModal from '../components/ConfirmModal';
+import ToastNotification from '../components/ToastNotification';
+import MobileNavbar from '../components/MobileNavbar';
 import { API_BASE } from '../config/api';
+
+// ✅ Safety checklist ที่ IT ต้องยืนยันก่อนปิดเคส (ต้องครบทั้ง 3 ข้อ)
+const SAFETY_CHECK_ITEMS = [
+  { key: 'plug', label: 'ปลั๊กไฟ OK', hint: 'ปลั๊ก/เต้ารับไม่ชำรุด เสียบแน่น ไม่มีรอยไหม้' },
+  { key: 'cable', label: 'สายไฟ OK', hint: 'สายไฟไม่ชำรุด ไม่มีรอยฉีกขาด จัดเก็บเรียบร้อย' },
+  { key: 'area', label: 'พื้นที่ปฏิบัติงาน OK', hint: 'เก็บอุปกรณ์/เครื่องมือ พื้นที่สะอาดปลอดภัย' },
+];
 import { useLocation, useNavigate } from 'react-router-dom';
 
+const STOCK_HOST = 'http://dciweb.dci.daikin.co.jp:3002';
+
 const Chip = ({ label, onRemove }) => (
-  <span className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-full text-xs font-bold">
+  <span className="flex items-center gap-1.5 bg-paper text-ink-soft border border-line px-2 py-1 rounded-lg text-xs font-semibold">
     {label}
-    <button onClick={onRemove} className="hover:text-indigo-900 transition-colors">×</button>
+    <button onClick={onRemove} className="text-muted hover:text-rose-500 transition-colors">×</button>
   </span>
 );
 
@@ -38,78 +56,101 @@ export default function ITServiceDesk() {
   const [notification, setNotification] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const [liveStatus, setLiveStatus] = useState('connecting');
+
   const [filterStatus, setFilterStatus] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
   const [filterType, setFilterType] = useState('');
+  const [filterSubtype, setFilterSubtype] = useState('');
   const [filterAssignee, setFilterAssignee] = useState('');
   const [filterDate, setFilterDate] = useState('');
   const [showFilter, setShowFilter] = useState(false);
 
-  // Sort states
   const [sortField, setSortField] = useState('created_at');
   const [sortDir, setSortDir] = useState('desc');
 
-  // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 15;
 
   const [rootCause, setRootCause] = useState('');
   const [solution, setSolution] = useState('');
+  // Safety checklist - ต้องติ๊กครบทั้ง 3 ข้อก่อนปิดเคส
+  const [safetyChecks, setSafetyChecks] = useState({ plug: false, cable: false, area: false });
+  const allSafetyChecked = safetyChecks.plug && safetyChecks.cable && safetyChecks.area;
+  const [holdReason, setHoldReason] = useState('');
+  const [expectedAt, setExpectedAt] = useState('');
 
   const [ticketHistory, setTicketHistory] = useState([]);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
 
-  // Layout Mode state (Grid / List)
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   const [layoutMode, setLayoutMode] = useState('list');
 
   const [formData, setFormData] = useState({
     requestType: 'Hardware Setup', projectName: '', targetDate: '', deviceType: 'Notebook (Windows)', deviceCount: 1, location: '', priority: 'Normal', requirements: ''
   });
 
-  const isITStaff = user?.cost_center === '7510';
+  const isITStaff = ['admin', 'it_staff'].includes(user?.role);
 
-  const formatDateShort = (value) => {
-    if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
-  };
-
-  const formatThaiDateTime = (value) => {
-    if (!value) return '';
-    return new Date(value).toLocaleString('th-TH', {
-      year: 'numeric', month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok'
-    });
-  };
-
-  const formatElapsedTime = (start, end) => {
+  const formatElapsedTime = (start, end, holdAt = null, resumedAt = null) => {
     if (!start || !end) return '-';
     const startDate = new Date(start);
     const endDate = new Date(end);
     if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return '-';
-    const diffMs = endDate - startDate;
+    let diffMs = endDate - startDate;
     if (diffMs <= 0) return '-';
+    if (holdAt && resumedAt) {
+      const holdMs = new Date(resumedAt) - new Date(holdAt);
+      if (holdMs > 0) diffMs -= holdMs;
+    }
     const totalMinutes = Math.floor(diffMs / 60000);
-    
+    if (totalMinutes <= 0) return '0 นาที';
     if (totalMinutes >= 60) {
       const hours = Math.floor(totalMinutes / 60);
       const minutes = totalMinutes % 60;
-      return `${hours}.${minutes.toString().padStart(2, '0')} hrs`;
+      return `${hours}.${String(minutes).padStart(2, '0')} ชั่วโมง`;
     }
-    
     return `${totalMinutes} นาที`;
   };
+
+  const getElapsedStyle = (start, end, holdAt = null, resumedAt = null) => {
+    if (!start || !end) return 'text-emerald-600 font-semibold';
+    let diffMs = new Date(end) - new Date(start);
+    if (holdAt && resumedAt) {
+      const holdMs = new Date(resumedAt) - new Date(holdAt);
+      if (holdMs > 0) diffMs -= holdMs;
+    }
+    const minutes = Math.floor(diffMs / 60000);
+    if (minutes <= 30) return 'text-emerald-600 font-semibold';
+    if (minutes <= 60) return 'text-amber-600 font-semibold';
+    if (minutes >= 60) return 'text-red-600 font-semibold';
+    return 'text-rose-600 font-semibold';
+  };
+
+  const [historyStartDate, setHistoryStartDate] = useState('');
+  const [historyEndDate, setHistoryEndDate] = useState('');
+  const historyStartDateRef = useRef('');
+  const historyEndDateRef = useRef('');
+  useEffect(() => { historyStartDateRef.current = historyStartDate; }, [historyStartDate]);
+  useEffect(() => { historyEndDateRef.current = historyEndDate; }, [historyEndDate]);
 
   const fetchRequests = async () => {
     setIsLoading(true);
     try {
-      const response = await ticketAPI.getTickets();
+      const params = {};
+      if (historyStartDateRef.current) params.startDate = historyStartDateRef.current;
+      if (historyEndDateRef.current) params.endDate = historyEndDateRef.current;
+      const response = await ticketAPI.getTickets(params);
       const tickets = response.data.data || response.data;
       setRequests(Array.isArray(tickets) ? tickets : []);
+      setLastSyncedAt(new Date());
     } catch (error) {
       console.error('Fetch error:', error);
       showNotification('Failed to load requests from database', 'error');
@@ -118,14 +159,55 @@ export default function ITServiceDesk() {
     }
   };
 
+  const isFirstHistoryRender = useRef(true);
+  useEffect(() => {
+    if (isFirstHistoryRender.current) {
+      isFirstHistoryRender.current = false;
+      return;
+    }
+    fetchRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyStartDate, historyEndDate]);
+
   useEffect(() => {
     fetchRequests();
+
+    const hubUrl = API_BASE.replace('/api', '') + '/hubs/tickets';
+    const token = localStorage.getItem('authToken');
+
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl(hubUrl, { accessTokenFactory: () => token })
+      .withAutomaticReconnect()
+      .build();
+
+    connection.onreconnecting(() => setLiveStatus('connecting'));
+    connection.onreconnected(() => setLiveStatus('online'));
+    connection.onclose(() => setLiveStatus('offline'));
+
+    connection.on('TicketsUpdated', () => {
+      fetchRequests();
+    });
+
+    connection.start()
+      .then(() => setLiveStatus('online'))
+      .catch(err => {
+        setLiveStatus('offline');
+        console.error('SignalR connect error:', err);
+      });
+
+    return () => { connection.stop(); };
   }, []);
 
   useEffect(() => {
     if (selectedTicket) fetchTicketHistory(selectedTicket.id);
     else { setTicketHistory([]); setCommentText(''); }
   }, [selectedTicket]);
+
+  useEffect(() => {
+    if (!location.state?.openModal) return;
+    setIsModalOpen(true);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.pathname, location.search, location.state?.openModal, navigate]);
 
   const fetchTicketHistory = async (id) => {
     try {
@@ -155,13 +237,13 @@ export default function ITServiceDesk() {
     }
     try {
       const ticketPayload = {
-        request_type: formData.requestType,
-        project_name: formData.projectName,
-        device_type: formData.deviceType,
-        device_count: parseInt(formData.deviceCount, 10) || 1,
+        requestType: formData.requestType,    // จาก request_type
+        projectName: formData.projectName,    // จาก project_name
+        deviceType: formData.deviceType,      // จาก device_type
+        deviceCount: parseInt(formData.deviceCount, 10) || 1, // จาก device_count
         location: formData.location,
         priority: formData.priority,
-        target_date: formData.targetDate || new Date().toISOString().split('T')[0],
+        targetDate: formData.targetDate || new Date().toISOString().split('T')[0], // จาก target_date
         notes: formData.requirements
       };
       await ticketAPI.createTicket(ticketPayload);
@@ -184,12 +266,152 @@ export default function ITServiceDesk() {
   };
 
   const closeConfirm = () => setPendingAction(null);
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
+  const isProcessingRef = useRef(false);
+  const [isSubmittingTicket, setIsSubmittingTicket] = useState(false);
+  const isSubmittingRef = useRef(false);
+
+  const [selectedStockItems, setSelectedStockItems] = useState([]);
+  const [assetPickerProduct, setAssetPickerProduct] = useState(null);
+  const [assetSerialInput, setAssetSerialInput] = useState('');
+  const [assetCodeInput, setAssetCodeInput] = useState('');
+
+  const [stockPickerOpen, setStockPickerOpen] = useState(false);
+  const [stockPickerStep, setStockPickerStep] = useState('type');
+  const [stockDeviceTypes, setStockDeviceTypes] = useState([]);
+  const [isLoadingDeviceTypes, setIsLoadingDeviceTypes] = useState(false);
+  const [selectedDeviceType, setSelectedDeviceType] = useState(null);
+  const [stockProductsForType, setStockProductsForType] = useState([]);
+  const [isLoadingStockProducts, setIsLoadingStockProducts] = useState(false);
+  const [productSearchInModal, setProductSearchInModal] = useState('');
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [globalSearchResults, setGlobalSearchResults] = useState([]);
+  const [isSearchingGlobal, setIsSearchingGlobal] = useState(false);
+  const globalSearchTimer = useRef(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const searchAllProducts = (query) => {
+    setGlobalSearchQuery(query);
+    if (globalSearchTimer.current) clearTimeout(globalSearchTimer.current);
+    if (!query.trim()) { setGlobalSearchResults([]); return; }
+    globalSearchTimer.current = setTimeout(async () => {
+      setIsSearchingGlobal(true);
+      try {
+        const res = await ticketAPI.searchStockProducts(query.trim());
+        setGlobalSearchResults(res.data.data || []);
+      } catch (err) {
+        console.error('Global stock search failed:', err);
+      } finally {
+        setIsSearchingGlobal(false);
+      }
+    }, 300);
+  };
+
+  const openStockPicker = async () => {
+    setStockPickerOpen(true);
+    setStockPickerStep('type');
+    setProductSearchInModal('');
+    setGlobalSearchQuery('');
+    setGlobalSearchResults([]);
+    if (stockDeviceTypes.length === 0) {
+      setIsLoadingDeviceTypes(true);
+      try {
+        const res = await ticketAPI.getStockDeviceTypes();
+        setStockDeviceTypes(res.data.data || []);
+      } catch (err) {
+        console.error('Failed to load device types:', err);
+        showNotification('โหลดประเภทอุปกรณ์ไม่สำเร็จ', 'error');
+      } finally {
+        setIsLoadingDeviceTypes(false);
+      }
+    }
+  };
+
+  const closeStockPicker = () => {
+    setStockPickerOpen(false);
+    setStockPickerStep('type');
+    setSelectedDeviceType(null);
+    setStockProductsForType([]);
+    setProductSearchInModal('');
+    setGlobalSearchQuery('');
+    setGlobalSearchResults([]);
+  };
+
+  const selectDeviceType = async (type) => {
+    setSelectedDeviceType(type);
+    setStockPickerStep('products');
+    setIsLoadingStockProducts(true);
+    try {
+      const res = await ticketAPI.searchStockProducts(undefined, type.TypeId);
+      setStockProductsForType(res.data.data || []);
+    } catch (err) {
+      console.error('Failed to load products:', err);
+      showNotification('โหลดรายการอุปกรณ์ไม่สำเร็จ', 'error');
+    } finally {
+      setIsLoadingStockProducts(false);
+    }
+  };
+
+  const backToTypeSelection = () => {
+    setStockPickerStep('type');
+    setSelectedDeviceType(null);
+    setStockProductsForType([]);
+    setProductSearchInModal('');
+  };
+
+  const visibleStockProducts = productSearchInModal.trim()
+    ? stockProductsForType.filter(p => p.ProductName?.toLowerCase().includes(productSearchInModal.trim().toLowerCase()))
+    : stockProductsForType;
+
+  const addStockItem = (product) => {
+    if (product.DeviceType === 'Asset') {
+      setAssetPickerProduct(product);
+      setAssetSerialInput('');
+      setAssetCodeInput('');
+      return;
+    }
+    setSelectedStockItems(prev => {
+      const existing = prev.find(i => i.productId === product.ProductID);
+      if (existing) {
+        return prev.map(i => i.productId === product.ProductID ? { ...i, qty: i.qty + 1 } : i);
+      }
+      return [...prev, { productId: product.ProductID, productName: product.ProductName, qty: 1, deviceType: product.DeviceType }];
+    });
+    showNotification(`เพิ่ม ${product.ProductName} แล้ว`, 'success');
+  };
+
+  const confirmAddAssetItem = () => {
+    if (!assetSerialInput.trim() || !assetCodeInput.trim()) return;
+    setSelectedStockItems(prev => [...prev, {
+      productId: assetPickerProduct.ProductID,
+      productName: assetPickerProduct.ProductName,
+      qty: 1,
+      deviceType: 'Asset',
+      serialNumber: assetSerialInput.trim(),
+      fixedAssetCode: assetCodeInput.trim()
+    }]);
+    setAssetPickerProduct(null); setAssetSerialInput(''); setAssetCodeInput('');
+  };
+
+  const updateStockItemQty = (productId, qty) => {
+    setSelectedStockItems(prev => prev.map(i => i.productId === productId ? { ...i, qty: Math.max(1, qty) } : i));
+  };
+
+  const removeStockItem = (productId) => {
+    setSelectedStockItems(prev => prev.filter(i => i.productId !== productId));
+  };
 
   const executePendingAction = async () => {
-    if (!pendingAction?.onConfirm) return;
+    if (!pendingAction?.onConfirm || isProcessingRef.current) return;
+    isProcessingRef.current = true;
+    setIsProcessingAction(true);
     try { await pendingAction.onConfirm(); }
     catch (error) { showNotification('ไม่สามารถดำเนินการได้', 'error'); }
-    finally { closeConfirm(); }
+    finally {
+      isProcessingRef.current = false;
+      setIsProcessingAction(false);
+      closeConfirm();
+    }
   };
 
   const fetchTicketDetails = async (ticketId) => {
@@ -202,48 +424,154 @@ export default function ITServiceDesk() {
     } finally { setIsDetailLoading(false); }
   };
 
+  useEffect(() => {
+    const ticketIdFromUrl = new URLSearchParams(location.search).get('ticket');
+    if (!ticketIdFromUrl) return;
+    fetchTicketDetails(ticketIdFromUrl);
+    const params = new URLSearchParams(location.search);
+    params.delete('ticket');
+    navigate({ search: params.toString() }, { replace: true });
+  }, [location.search]);
+
+  useEffect(() => {
+    const ticketId = location.state?.ticketId;
+    if (!ticketId) return;
+    fetchTicketDetails(ticketId);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.pathname, location.search, location.state?.ticketId, navigate]);
+
   const handleSaveComment = async () => {
-    if (commentMode === 'close' && (!rootCause.trim() || !solution.trim())) {
-      showNotification('กรุณาระบุสาเหตุและวิธีแก้ก่อนปิดเคส', 'error');
+    if (commentMode === 'hold' && !holdReason.trim()) {
+      showNotification('กรุณาระบุเหตุผลที่ต้อง Hold', 'error');
       return;
     }
     if (commentMode === 'reject' && !commentText.trim()) {
       showNotification('กรุณาระบุเหตุผลในการปฏิเสธเคส', 'error');
       return;
     }
+    if (commentMode === 'close' && !allSafetyChecked) {
+      const missing = SAFETY_CHECK_ITEMS.filter(i => !safetyChecks[i.key]).map(i => i.label);
+      showNotification(`กรุณาตรวจสอบความปลอดภัยให้ครบก่อนปิดเคส (${missing.join(', ')})`, 'error');
+      return;
+    }
+
+    // ✅ ท่าไม้ตาย: ส่งไปทั้ง camelCase และ snake_case ดักไว้ทุกทาง!
     const updatePayload = commentMode === 'reject' ? { status: 'Rejected', comment: commentText }
-      : commentMode === 'close' ? { status: 'Completed', root_cause: rootCause, solution: solution, comment: commentText || undefined }
-        : { comment: commentText };
+      : commentMode === 'close' ? {
+        status: 'Closed', 
+        rootCause: rootCause,         // แบบที่ 1
+        root_cause: rootCause,        // แบบที่ 2
+        Solution: solution,           // แบบที่ 1
+        solution: solution,           // แบบที่ 2
+        comment: commentText || undefined,
+        stockItems: selectedStockItems.length > 0 ? selectedStockItems : undefined,
+        stock_items: selectedStockItems.length > 0 ? selectedStockItems : undefined,
+        // ✅ Safety checklist (ส่งทั้ง camelCase และ snake_case เหมือนฟิลด์อื่น)
+        safetyPlugOk: safetyChecks.plug,
+        safety_plug_ok: safetyChecks.plug,
+        safetyCableOk: safetyChecks.cable,
+        safety_cable_ok: safetyChecks.cable,
+        safetyAreaOk: safetyChecks.area,
+        safety_area_ok: safetyChecks.area
+      }
+      : commentMode === 'hold' ? { 
+        status: 'On Hold', 
+        holdReason: holdReason,       // แบบที่ 1
+        hold_reason: holdReason,      // แบบที่ 2
+        expectedAt: expectedAt || null, 
+        expected_at: expectedAt || null 
+      }
+      : { comment: commentText };
 
     try {
       await ticketAPI.updateTicket(selectedTicket.id, updatePayload);
       showNotification(commentMode === 'close' ? 'ปิดเคสสำเร็จ' : commentMode === 'reject' ? 'Ticket rejected' : 'Comment added', 'success');
-      setCommentModalOpen(false); setCommentText(''); setRootCause(''); setSolution('');
-      setCommentMode('comment'); setSelectedTicket(null); fetchRequests();
-    } catch (err) { showNotification('Failed to save', 'error'); }
-  };
+      setCommentModalOpen(false); setCommentText(''); setRootCause(''); setSolution(''); setHoldReason(''); setExpectedAt('');
+      setSafetyChecks({ plug: false, cable: false, area: false });
+      setSelectedStockItems([]); closeStockPicker();
 
+      setCommentMode('comment'); setSelectedTicket(null); fetchRequests();
+    } catch (err) {
+      // 💡 จุดสังเกต: ถ้าพังอีก มันจะแจ้งข้อความ Error จาก Backend ออกมาที่หน้าจอ (Toast) 
+      const msg = err.response?.data?.message || 'Failed to save';
+      showNotification(msg, 'error');
+      console.error("Save Comment Error:", err.response || err);
+    }
+  };
   const openCommentModal = (mode = 'comment') => {
     setCommentMode(mode); setCommentText(''); setCommentModalOpen(true);
+    if (mode === 'close') {
+      setSelectedStockItems([]); closeStockPicker();
+      setSafetyChecks({ plug: false, cable: false, area: false });
+    }
   };
 
   const handleAcceptTicket = async () => {
     try {
+      // 🧹 เพิ่มการล้างข้อความ [Action] เก่าทิ้ง แบบเดียวกับ Assign
+      let cleanNotes = selectedTicket.notes || '';
+      cleanNotes = cleanNotes.replace(/\n\n\[Action\][\s\S]*$/, '');
+
       await ticketAPI.updateTicket(selectedTicket.id, {
-        status: 'In Progress', empCode_assigned: user?.empcode,
-        notes: (selectedTicket.notes || '') + `\n\n[Action] รับเคสโดย ${user?.name || 'IT Staff'}`
+        status: 'In Progress',
+        empCodeAssigned: user?.empcode,
+        empCode_assigned: user?.empcode,
+        // ✅ ใช้ cleanNotes ทับลงไป
+        notes: cleanNotes + `\n\n[Action] รับเคสโดย ${user?.name || 'IT Staff'}`
       });
       showNotification('รับเคสเรียบร้อย', 'success');
-      setSelectedTicket(null); fetchRequests();
-    } catch (err) { showNotification('ไม่สามารถรับเคสได้', 'error'); }
+      setSelectedTicket(null);
+      fetchRequests();
+    } catch (err) {
+      showNotification('ไม่สามารถรับเคสได้', 'error');
+    }
   };
+
+  const handleAssignTicket = async (empCode, { setInProgress = false, staffName = empCode } = {}) => {
+    try {
+      // 🧹 ล้างข้อความ [Action] เก่าทิ้ง
+      let cleanNotes = selectedTicket.notes || '';
+      cleanNotes = cleanNotes.replace(/\n\n\[Action\][\s\S]*$/, '');
+
+      const payload = {
+        EmpCodeAssigned: empCode,
+        empCodeAssigned: empCode,
+        empCode_assigned: empCode,
+        emp_code_assigned: empCode,
+        notes: cleanNotes + `\n\n[Action] โอนเคสให้ ${staffName}` // ✅ ใช้ staffName ที่ส่งมา
+      };
+
+      if (setInProgress) {
+        payload.status = 'In Progress';
+        payload.notes = cleanNotes + `\n\n[Action] มอบหมายเคสให้ ${staffName}`;
+      }
+
+      await ticketAPI.updateTicket(selectedTicket.id, payload);
+      showNotification('มอบหมายเคสเรียบร้อย', 'success');
+      setSelectedTicket(null);
+      fetchRequests();
+    } catch (err) {
+      console.error("Assign Error:", err); // ใส่ไว้เผื่อดูใน Console
+      const msg = err.response?.data?.message || 'ไม่สามารถมอบหมายเคสได้';
+      showNotification(msg, 'error');
+    }
+  };
+
+
 
   const handleDeleteTicket = async () => {
     try {
       await ticketAPI.deleteTicket(selectedTicket.id);
       showNotification('Ticket deleted', 'success');
       setSelectedTicket(null); fetchRequests();
-    } catch (err) { showNotification('Failed to delete ticket', 'error'); }
+    } catch (err) {
+      if (err.response?.status === 404) {
+        showNotification('Ticket นี้ถูกลบไปแล้ว', 'info');
+        setSelectedTicket(null); fetchRequests();
+      } else {
+        showNotification('Failed to delete ticket', 'error');
+      }
+    }
   };
 
   const handleCancelTicket = async () => {
@@ -254,27 +582,61 @@ export default function ITServiceDesk() {
     } catch (err) { showNotification('ไม่สามารถยกเลิก Ticket ได้', 'error'); }
   };
 
+  const handleResumeTicket = async () => {
+    try {
+      await ticketAPI.updateTicket(selectedTicket.id, {
+        status: 'In Progress',
+        comment: 'กลับมาดำเนินการต่อแล้ว'
+      });
+      showNotification('Resume เรียบร้อย', 'success');
+      setSelectedTicket(null);
+      fetchRequests();
+    } catch (err) {
+      showNotification('ไม่สามารถ Resume ได้', 'error');
+    }
+  };
+
+  const handleAddHelper = async (empCode) => {
+    try {
+      await ticketAPI.addHelper(selectedTicket.id, empCode);
+      showNotification('เพิ่ม Helper เรียบร้อย', 'success');
+      fetchTicketDetails(selectedTicket.id);
+    } catch (err) {
+      showNotification('ไม่สามารถเพิ่ม Helper ได้', 'error');
+    }
+  };
+
+  const handleRemoveHelper = async (empCode) => {
+    try {
+      await ticketAPI.removeHelper(selectedTicket.id, empCode);
+      showNotification('ลบ Helper เรียบร้อย', 'success');
+      fetchTicketDetails(selectedTicket.id);
+    } catch (err) {
+      showNotification('ไม่สามารถลบ Helper ได้', 'error');
+    }
+  };
+
   const filteredRequests = useMemo(() => {
     let result = requests;
 
-    // View filter
     if (currentView === 'mine') result = result.filter(r => r.empCode_created === user?.empcode);
+    if (currentView === 'incharge') result = result.filter(r => r.empCode_assigned === user?.empcode);
 
-    // Search
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
+    if (debouncedSearchQuery) {
+      const q = debouncedSearchQuery.toLowerCase();
       result = result.filter(r =>
         r.project_name?.toLowerCase().includes(q) ||
         r.req_id?.toLowerCase().includes(q) ||
         r.location?.toLowerCase().includes(q) ||
-        r.requester_name?.toLowerCase().includes(q)
+        r.requester_name?.toLowerCase().includes(q) ||
+        r.problem_subtype_name?.toLowerCase().includes(q)
       );
     }
 
-    // Filters
     if (filterStatus) result = result.filter(r => r.status === filterStatus);
     if (filterPriority) result = result.filter(r => r.priority === filterPriority);
     if (filterType) result = result.filter(r => (r.problem_type_name || r.request_type) === filterType);
+    if (filterSubtype) result = result.filter(r => r.problem_subtype_name === filterSubtype);
     if (filterAssignee) result = result.filter(r =>
       filterAssignee === 'unassigned'
         ? !r.empCode_assigned
@@ -291,7 +653,6 @@ export default function ITServiceDesk() {
       });
     }
 
-    // Sort
     result = [...result].sort((a, b) => {
       let valA = a[sortField], valB = b[sortField];
       if (sortField === 'priority') {
@@ -308,81 +669,52 @@ export default function ITServiceDesk() {
     });
 
     return result;
-  }, [requests, currentView, searchQuery, filterStatus, filterPriority, filterType, filterAssignee, filterDate, sortField, sortDir, user?.empcode]);
+  }, [requests, currentView, debouncedSearchQuery, filterStatus, filterPriority, filterType, filterSubtype, filterAssignee, filterDate, sortField, sortDir, user?.empcode]);
 
-  // Pagination
   const totalPages = Math.ceil(filteredRequests.length / ITEMS_PER_PAGE);
   const paginatedRequests = filteredRequests.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
     currentPage * ITEMS_PER_PAGE
   );
 
-  // Reset page when filter changes
-  useEffect(() => { setCurrentPage(1); }, [filterStatus, filterPriority, filterType, filterAssignee, filterDate, searchQuery, currentView]);
+  useEffect(() => { setCurrentPage(1); }, [filterStatus, filterPriority, filterType, filterSubtype, filterAssignee, filterDate, searchQuery, currentView]);
 
-  // Unique values for filter dropdowns
+
   const uniqueTypes = [...new Set(requests.map(r => r.problem_type_name || r.request_type).filter(Boolean))];
   const uniqueAssignees = [...new Map(requests.filter(r => r.empCode_assigned).map(r => [r.empCode_assigned, r.assigned_name || r.empCode_assigned])).entries()];
-  const activeFilterCount = [filterStatus, filterPriority, filterType, filterAssignee, filterDate].filter(Boolean).length;
+  const activeFilterCount = [filterStatus, filterPriority, filterType, filterSubtype, filterAssignee, filterDate].filter(Boolean).length;
+  const uniqueSubtypes = useMemo(() => {
+    const source = filterType
+      ? requests.filter(r => (r.problem_type_name || r.request_type) === filterType)
+      : requests;
+    return [...new Set(source.map(r => r.problem_subtype_name).filter(Boolean))];
+  }, [requests, filterType]);
+
+  const matchesCurrentView = (r) => {
+    if (currentView === 'mine') return r.empCode_created === user?.empcode;
+    if (currentView === 'incharge') return r.empCode_assigned === user?.empcode;
+    return true;
+  };
 
   const getPriorityStyle = (priority) => {
     switch (priority) {
-      case 'Normal': return 'text-emerald-700 bg-emerald-50 border-emerald-200';
-      case 'Medium': return 'text-amber-700 bg-amber-50 border-amber-200';
-      case 'High': return 'text-orange-700 bg-orange-50 border-orange-200';
-      case 'Critical': return 'text-rose-700 bg-rose-50 border-rose-200';
-      default: return 'text-slate-600 bg-slate-50 border-slate-200';
+      case 'Normal': return 'text-ink-soft bg-paper border-line';
+      case 'Medium': return 'text-amber-700 bg-amber-50 border-amber-300';
+      case 'High': return 'text-orange-700 bg-orange-50 border-orange-300';
+      case 'Critical': return 'text-white bg-red-600 border-red-700';
+      default: return 'text-ink-soft bg-paper border-line';
     }
   };
 
-const getStatusStyle = (status) => {
-  switch (status) {
-    case 'Completed':  return 'text-emerald-800 bg-emerald-100 ring-emerald-400';
-    case 'In Progress':return 'text-blue-800    bg-blue-100    ring-blue-400';
-    case 'Rejected':   return 'text-rose-800    bg-rose-100    ring-rose-400';
-    case 'Cancelled':  return 'text-slate-700   bg-slate-100   ring-slate-400';
-    case 'Pending':    return 'text-amber-800   bg-amber-100   ring-amber-400 animate-pulse';
-    default:           return 'text-amber-800   bg-amber-100   ring-amber-400';
-  }
-};
-  const getStatusDot = (status) => {
-    switch (status) {
-      case 'Pending': return 'w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0';
-      case 'In Progress': return 'w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shrink-0';
-      case 'Completed': return 'w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0';
-      case 'Rejected': return 'w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0';
-      case 'Cancelled': return 'w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0';
-      default: return 'w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0';
-    }
-  };
-  const displayStatusLabel = (status) => {
-    switch (status) {
-      case 'Pending': return 'Pending';
-      case 'In Progress': return 'In Progress';
-      case 'Completed': return 'Completed';
-      case 'Rejected': return 'Rejected';
-      case 'Cancelled': return 'Cancelled';
-      default: return status;
+  const getPriorityBorder = (priority) => {
+    switch (priority) {
+      case 'Critical': return 'border-l-red-600';
+      case 'High': return 'border-l-orange-500';
+      case 'Medium': return 'border-l-amber-500';
+      default: return 'border-l-slate-400';
     }
   };
 
-  const requestTypeMap = {
-    'Hardware Setup': 'asset', 'Hardware Repair': 'peripheral', 'Relocation (Move)': 'asset',
-    'Software Install': 'storage', 'Network & Printer': 'network', 'Account & Access': 'storage', 'Other': 'office',
-  };
-
-  const getRequestTypeIcon = (type) => {
-    const deviceKey = requestTypeMap[type] || 'office';
-    const { text } = getDeviceTypeColor(deviceKey);
-    switch (type) {
-      case 'Hardware Setup': return <Monitor className={`w-4 h-4 ${text}`} />;
-      case 'Software Install': return <Laptop className={`w-4 h-4 ${text}`} />;
-      case 'Relocation (Move)': return <MapPin className={`w-4 h-4 ${text}`} />;
-      case 'Hardware Repair': return <Wrench className={`w-4 h-4 ${text}`} />;
-      case 'Network & Printer': return <Paperclip className={`w-4 h-4 ${text}`} />;
-      default: return <LayoutDashboard className={`w-4 h-4 ${text}`} />;
-    }
-  };
   const handleSort = (field) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortField(field); setSortDir('asc'); }
@@ -390,469 +722,511 @@ const getStatusStyle = (status) => {
 
   const SortIcon = ({ field }) => {
     if (sortField !== field) return <span className="text-slate-300 ml-1">↕</span>;
-    return <span className="text-indigo-500 ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>;
+    return <span className="text-blue-500 ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>;
   };
-  return (
-    <div className="min-h-screen bg-slate-50/50 text-slate-900 font-sans flex overflow-hidden">
 
-      {/* Toast Notification */}
-      {notification && (
-        <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4 fade-in duration-300">
-          <div className={`flex items-center gap-3.5 px-6 py-4 rounded-2xl shadow-2xl backdrop-blur-md border border-white/20 min-w-[280px] ${notification.type === 'error'
-              ? 'bg-rose-500/95 text-white shadow-rose-500/20'
-              : 'bg-emerald-500/95 text-white shadow-emerald-500/20'
-            }`}>
-            <div className="bg-white/20 p-2 rounded-full shrink-0">
-              {notification.type === 'error' ? <AlertCircle className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
-            </div>
-            <div className="flex-1 pr-2">
-              <p className="font-bold text-sm leading-tight">
-                {notification.type === 'error' ? 'เกิดข้อผิดพลาด' : 'สำเร็จ'}
-              </p>
-              <p className="text-white/90 text-xs font-semibold mt-0.5">{notification.message}</p>
-            </div>
-            <button
-              onClick={() => setNotification(null)}
-              className="p-1 hover:bg-white/10 rounded-lg transition text-white/70 hover:text-white shrink-0"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+  const greetingTime = () => {
+    const h = new Date().getHours();
+    if (h < 12) return 'GOOD MORNING';
+    if (h < 17) return 'GOOD AFTERNOON';
+    return 'GOOD EVENING';
+  };
+
+  return (
+    <div className="min-h-screen bg-paper text-ink font-sans flex flex-col md:flex-row overflow-hidden">
+
+      <ToastNotification
+        message={notification?.message}
+        type={notification?.type}
+        onDismiss={() => setNotification(null)}
+      />
+
+      {/* Mobile Navbar */}
+      <MobileNavbar user={user} onMenuClick={() => setMobileOpen(true)} />
 
       {/* Sidebar */}
-      <Sidebar user={user} isITStaff={isITStaff} logout={logout} />
+      <Sidebar user={user} isITStaff={isITStaff} logout={logout} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden p-4 pl-0">
-        <div className="bg-white rounded-[2rem] flex flex-col h-full shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-200/60 relative">
+      {/* Main Content Area - Formal Sharp Borders */}
+      <main className="flex-1 flex flex-col h-screen overflow-hidden p-0 md:p-6">
+        <div className="bg-surface rounded-lg shadow-soft flex flex-col h-full overflow-hidden border border-line">
 
           {/* Header */}
-          <header className="px-8 py-6 border-b border-slate-100 bg-white/80 backdrop-blur-md flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 z-10 shrink-0">
+          <header className="dash-rise px-6 py-5 border-b border-line bg-surface flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 shrink-0">
             <div>
-              <h1 className="text-2xl font-black text-slate-800 tracking-tight">
-                {currentView === 'all' ? 'All IT Requests' : 'My IT Requests'}
+              <p className="text-xs font-semibold text-muted mb-1">{greetingTime()}</p>
+              <h1 className="font-display text-2xl font-bold text-ink tracking-tight flex items-center gap-2">
+                {currentView === 'all' ? 'All IT Tickets' : currentView === 'incharge' ? 'Tickets In Charge' : 'My IT Tickets'}
               </h1>
-              <p className="text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-widest">
-                {isITStaff && currentView === 'all' ? 'Manage all system tickets' : 'Your submitted tickets'}
-              </p>
+              <div className="flex items-center gap-2 mt-1.5 text-xs font-medium text-muted">
+                <span className={`w-2 h-2 rounded-full ${liveStatus === 'online' ? 'bg-teal animate-pulse' : liveStatus === 'connecting' ? 'bg-amber animate-pulse' : 'bg-rose'}`} />
+                <span>{liveStatus === 'online' ? 'Live' : liveStatus === 'connecting' ? 'Connecting' : 'Offline'}</span>
+                {lastSyncedAt && <span className="text-muted ml-1">• Synced {formatDateShort(lastSyncedAt)}</span>}
+              </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
-              {/* View Toggle */}
-              <div className="inline-flex rounded-full bg-slate-100/80 p-1 border border-slate-200/50 shadow-inner">
-                <button onClick={() => navigate('/?view=all')} className={`px-5 py-2 rounded-full text-xs font-bold transition-all duration-300 ${currentView === 'all' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-                  All Tickets
-                </button>
-                <button onClick={() => navigate('/?view=mine')} className={`px-5 py-2 rounded-full text-xs font-bold transition-all duration-300 ${currentView === 'mine' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-                  My Tickets
-                </button>
+            <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+
+              {/* Tab Toggles - pill group */}
+              <div className="flex rounded-full border border-line bg-paper p-1 gap-1">
+                <button onClick={() => navigate('/?view=all')} className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${currentView === 'all' ? 'bg-ink text-white shadow-soft' : 'text-ink-soft hover:bg-surface'}`}>All Tickets</button>
+                <button onClick={() => navigate('/?view=mine')} className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${currentView === 'mine' ? 'bg-ink text-white shadow-soft' : 'text-ink-soft hover:bg-surface'}`}>My Tickets</button>
+                {isITStaff && (
+                  <button onClick={() => navigate('/?view=incharge')} className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${currentView === 'incharge' ? 'bg-ink text-white shadow-soft' : 'text-ink-soft hover:bg-surface'}`}>In Charge</button>
+                )}
               </div>
 
               {/* Grid / List Layout Switcher */}
-              <div className="inline-flex rounded-full bg-slate-100/80 p-1 border border-slate-200/50 shadow-inner">
+              <div className="flex rounded-full border border-line bg-paper p-1 gap-1">
                 <button
                   onClick={() => setLayoutMode('list')}
-                  className={`p-2 rounded-full transition-all duration-300 ${layoutMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  className={`p-1.5 rounded-full transition-all ${layoutMode === 'list' ? 'bg-surface text-ink shadow-soft' : 'text-muted hover:text-ink'}`}
                   title="List View"
+                  aria-label="List view"
                 >
                   <List className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => setLayoutMode('grid')}
-                  className={`p-2 rounded-full transition-all duration-300 ${layoutMode === 'grid' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  className={`p-1.5 rounded-full transition-all ${layoutMode === 'grid' ? 'bg-surface text-ink shadow-soft' : 'text-muted hover:text-ink'}`}
                   title="Grid View"
+                  aria-label="Grid view"
                 >
                   <Grid className="w-4 h-4" />
                 </button>
-                {/* Pagination */}
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50">
-                    <p className="text-xs font-bold text-slate-400">
-                      แสดง {(currentPage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(currentPage * ITEMS_PER_PAGE, filteredRequests.length)} จาก {filteredRequests.length} รายการ
-                    </p>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-100 disabled:opacity-30 transition-colors">«</button>
-                      <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-100 disabled:opacity-30 transition-colors">‹</button>
-                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                        let page;
-                        if (totalPages <= 5) page = i + 1;
-                        else if (currentPage <= 3) page = i + 1;
-                        else if (currentPage >= totalPages - 2) page = totalPages - 4 + i;
-                        else page = currentPage - 2 + i;
-                        return (
-                          <button key={page} onClick={() => setCurrentPage(page)}
-                            className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${currentPage === page
-                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/30'
-                                : 'text-slate-500 hover:bg-slate-100'
-                              }`}>{page}</button>
-                        );
-                      })}
-                      <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-100 disabled:opacity-30 transition-colors">›</button>
-                      <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold text-slate-400 hover:bg-slate-100 disabled:opacity-30 transition-colors">»</button>
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* Search Bar */}
-              <div className="relative w-full sm:w-64 group">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 group-focus-within:text-indigo-500 transition-colors" />
+              <div className="relative w-full min-w-[200px] sm:w-64">
+                <Search className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
-                  type="text" placeholder="Search ID, Project, Location..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-full text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-400 transition-all"
+                  type="text" placeholder="ค้นหาเลขที่, โครงการ, สถานที่..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-paper border border-line rounded-full text-sm text-ink-soft placeholder:text-muted focus:outline-none focus:border-ink focus:bg-surface focus:ring-4 focus:ring-ink/10 transition-all"
                 />
               </div>
 
-              {/* Action Button */}
-              <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-full font-bold text-sm transition-all duration-300 shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/40 active:scale-95 shrink-0">
-                <Plus className="w-5 h-5" /> สร้าง Ticket ใหม่
+              {/* Primary Action Button */}
+              <button onClick={() => setIsModalOpen(true)} className="lift flex items-center justify-center gap-2 bg-ink hover:bg-ink-soft text-white px-5 py-2 rounded-full text-sm font-semibold shadow-soft transition-colors shrink-0 active:scale-95">
+                <Plus className="w-4 h-4" /> New Ticket
               </button>
             </div>
+
           </header>
 
           {/* Scrollable Dashboard Body */}
-          <div className="flex-1 overflow-y-auto p-8 bg-slate-50/30 custom-scrollbar">
+          <div className="dash-rise flex-1 overflow-y-auto p-4 sm:p-6 bg-paper text-ink custom-scrollbar">
 
-            {/* Premium Stats Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6">
+            {/* KPI Cards - Minimalist formal style */}
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
               {[
-                { label: 'ทั้งหมด', value: requests.filter(r => currentView === 'mine' ? r.empCode_created === user?.empcode : true).length, icon: <LayoutDashboard className="w-6 h-6 text-white" />, bgIcon: 'bg-indigo-500', shadow: 'shadow-indigo-200', filterVal: '' },
-                { label: 'Pending', value: requests.filter(r => r.status === 'Pending').length, icon: <Clock className="w-6 h-6 text-white" />, bgIcon: 'bg-amber-400', shadow: 'shadow-amber-200', filterVal: 'Pending' },
-                { label: 'In Progress', value: requests.filter(r => r.status === 'In Progress').length, icon: <Laptop className="w-6 h-6 text-white" />, bgIcon: 'bg-blue-500', shadow: 'shadow-blue-200', filterVal: 'In Progress' },
-                { label: 'Completed', value: requests.filter(r => r.status === 'Completed').length, icon: <CheckCircle className="w-6 h-6 text-white" />, bgIcon: 'bg-emerald-500', shadow: 'shadow-emerald-200', filterVal: 'Completed' },
-              ].map((s) => (
-                <div
-                  key={s.label}
+                {
+                  label: 'เคสทั้งหมด', desc: 'ทั้งหมดในระบบ',
+                  value: requests.filter(matchesCurrentView).length,
+                  Icon: Ticket, chip: 'bg-slate-100 text-slate-600',
+                  filterVal: ''
+                },
+                {
+                  label: 'รอรับเรื่อง', desc: 'รอรับเรื่อง',
+                  value: requests.filter(r => matchesCurrentView(r) && r.status === 'Open').length,
+                  Icon: Inbox, chip: 'bg-blue-50 text-blue-600',
+                  filterVal: 'Open'
+                },
+                {
+                  label: 'กำลังดำเนินการ', desc: 'กำลังดำเนินการ',
+                  value: requests.filter(r => matchesCurrentView(r) && r.status === 'In Progress').length,
+                  Icon: Wrench, chip: 'bg-amber-50 text-amber-600',
+                  filterVal: 'In Progress'
+                },
+                {
+                  label: 'ปิดแล้ว', desc: 'ปิดงานแล้ว',
+                  value: requests.filter(r => matchesCurrentView(r) && r.status === 'Closed').length,
+                  Icon: CheckCircle, chip: 'bg-teal-50 text-teal-700',
+                  filterVal: 'Closed'
+                },
+              ].map((s, i) => (
+                <button
+                  key={i}
+                  type="button"
                   onClick={() => setFilterStatus(prev => prev === s.filterVal ? '' : s.filterVal)}
-                  className={`bg-white rounded-2xl border p-5 flex items-center justify-between shadow-sm cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-lg
-        ${filterStatus === s.filterVal && s.filterVal !== ''
-                      ? 'border-indigo-400 ring-2 ring-indigo-300/50'
-                      : 'border-slate-100 hover:border-slate-200'
-                    }`}
+                  aria-pressed={filterStatus === s.filterVal}
+                  className={`group chip-wiggle lift flex min-h-[120px] flex-col justify-between rounded-lg border bg-surface p-5 text-left
+                    ${filterStatus === s.filterVal ? 'border-ink ring-2 ring-ink/10 shadow-lift' : 'border-line shadow-soft'}`}
                 >
-                  <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{s.label}</p>
-                    <p className="text-3xl font-black text-slate-800 leading-none">{isLoading ? '—' : s.value}</p>
+                  <span className={`chip-icon flex h-9 w-9 items-center justify-center rounded-lg ${s.chip}`}>
+                    <s.Icon className="h-4 w-4" />
+                  </span>
+                  <p className="mt-4 font-display text-4xl font-bold leading-none text-ink tabular-nums">{isLoading ? '—' : s.value}</p>
+                  <div className="mt-2 min-w-0">
+                    <p className="truncate text-sm font-semibold text-ink-soft">{s.label}</p>
+                    <p className="truncate text-xs text-muted">{s.desc}</p>
                   </div>
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${s.bgIcon} shadow-lg ${s.shadow}`}>
-                    {s.icon}
-                  </div>
-                </div>
+                </button>
               ))}
             </div>
+
             {/* Filter Bar */}
             <div className="flex items-center gap-3 mb-5 flex-wrap">
               <button
                 onClick={() => setShowFilter(v => !v)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition-all ${showFilter || activeFilterCount > 0
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-500/20'
-                    : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold border transition-all ${showFilter || activeFilterCount > 0
+                  ? 'bg-ink text-white border-ink shadow-soft'
+                  : 'bg-surface text-ink-soft border-line hover:bg-paper'
                   }`}
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" /></svg>
-                Filters
+                <Filter className="w-3.5 h-3.5" />
+                ตัวกรอง
                 {activeFilterCount > 0 && (
-                  <span className="bg-white text-indigo-600 rounded-full px-1.5 py-0.5 text-[10px] font-black">{activeFilterCount}</span>
+                  <span className="bg-surface text-ink rounded-full px-1.5 py-0.5 text-[10px] font-bold">{activeFilterCount}</span>
                 )}
               </button>
 
-              {/* Active filter chips */}
+              {/* {Active filter chips */}
               {filterStatus && <Chip label={filterStatus} onRemove={() => setFilterStatus('')} />}
               {filterPriority && <Chip label={filterPriority} onRemove={() => setFilterPriority('')} />}
               {filterType && <Chip label={filterType} onRemove={() => setFilterType('')} />}
-              {filterDate && <Chip label={{ today: 'วันนี้', week: 'สัปดาห์นี้', month: 'เดือนนี้' }[filterDate]} onRemove={() => setFilterDate('')} />}
-              {filterAssignee && <Chip label={filterAssignee === 'unassigned' ? 'ยังไม่มีคนรับ' : uniqueAssignees.find(([k]) => k === filterAssignee)?.[1] || filterAssignee} onRemove={() => setFilterAssignee('')} />}
+              {filterSubtype && <Chip label={filterSubtype} onRemove={() => setFilterSubtype('')} />}
+              {filterDate && <Chip label={{ today: 'Today', week: 'This Week', month: 'This Month' }[filterDate]} onRemove={() => setFilterDate('')} />}
+              {filterAssignee && <Chip label={filterAssignee === 'unassigned' ? 'Unassigned' : uniqueAssignees.find(([k]) => k === filterAssignee)?.[1] || filterAssignee} onRemove={() => setFilterAssignee('')} />}
 
               {activeFilterCount > 0 && (
                 <button
-                  onClick={() => { setFilterStatus(''); setFilterPriority(''); setFilterType(''); setFilterAssignee(''); setFilterDate(''); }}
-                  className="text-xs font-bold text-rose-500 hover:text-rose-700 transition-colors"
+                  onClick={() => { setFilterStatus(''); setFilterPriority(''); setFilterType(''); setFilterSubtype(''); setFilterAssignee(''); setFilterDate(''); }}
+                  className="text-xs font-semibold text-rose-500 hover:text-rose-700 transition-colors"
                 >
                   Clear all
                 </button>
               )}
 
-              <span className="ml-auto text-xs font-bold text-slate-400">{filteredRequests.length} รายการ</span>
+              <span className="ml-auto text-xs font-semibold text-muted">พบ {filteredRequests.length} รายการ</span>
             </div>
 
             {/* Filter Panel */}
             {showFilter && (
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 mb-5 grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="bg-surface rounded-lg border border-line shadow-soft p-4 mb-5 grid grid-cols-2 md:grid-cols-6 gap-4">
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Status</label>
+                  <label className="block text-[10px] font-bold text-muted mb-1.5">สถานะ</label>
                   <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500">
-                    <option value="">ทั้งหมด</option>
-                    {['Pending', 'In Progress', 'Completed', 'Rejected', 'Cancelled'].map(s => <option key={s}>{s}</option>)}
+                    className="w-full bg-paper border border-line rounded-lg p-2 text-xs font-medium text-ink-soft focus:outline-none focus:border-blue-500">
+                    <option value="">All Statuses</option>
+                    {['Open', 'In Progress', 'Closed', 'Rejected', 'Cancelled'].map(s => <option key={s}>{s}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Priority</label>
+                  <label className="block text-[10px] font-bold text-muted mb-1.5">ความเร่งด่วน</label>
                   <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500">
-                    <option value="">ทั้งหมด</option>
+                    className="w-full bg-paper border border-line rounded-lg p-2 text-xs font-medium text-ink-soft focus:outline-none focus:border-blue-500">
+                    <option value="">All Priorities</option>
                     {['Critical', 'High', 'Medium', 'Normal'].map(s => <option key={s}>{s}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">ประเภทปัญหา</label>
+                  <label className="block text-[10px] font-bold text-muted mb-1.5">Request Type</label>
                   <select value={filterType} onChange={e => setFilterType(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500">
-                    <option value="">ทั้งหมด</option>
+                    className="w-full bg-paper border border-line rounded-lg p-2 text-xs font-medium text-ink-soft focus:outline-none focus:border-blue-500">
+                    <option value="">All Types</option>
                     {uniqueTypes.map(t => <option key={t}>{t}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">ผู้รับผิดชอบ</label>
+                  <label className="block text-[10px] font-bold text-muted mb-1.5">Sub-type</label>
+                  <select value={filterSubtype} onChange={e => setFilterSubtype(e.target.value)}
+                    disabled={uniqueSubtypes.length === 0}
+                    className="w-full bg-paper border border-line rounded-lg p-2 text-xs font-medium text-ink-soft focus:outline-none focus:border-blue-500 disabled:opacity-40 disabled:cursor-not-allowed">
+                    <option value="">All Sub-types</option>
+                    {uniqueSubtypes.map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-muted mb-1.5">Assignee</label>
                   <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500">
-                    <option value="">ทั้งหมด</option>
-                    <option value="unassigned">ยังไม่มีคนรับ</option>
+                    className="w-full bg-paper border border-line rounded-lg p-2 text-xs font-medium text-ink-soft focus:outline-none focus:border-blue-500">
+                    <option value="">All Assignees</option>
+                    <option value="unassigned">Unassigned</option>
                     {uniqueAssignees.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">วันที่สร้าง</label>
+                  <label className="block text-[10px] font-bold text-muted mb-1.5">วันที่สร้าง</label>
                   <select value={filterDate} onChange={e => setFilterDate(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500">
-                    <option value="">ทั้งหมด</option>
-                    <option value="today">วันนี้</option>
-                    <option value="week">สัปดาห์นี้</option>
-                    <option value="month">เดือนนี้</option>
+                    className="w-full bg-paper border border-line rounded-lg p-2 text-xs font-medium text-ink-soft focus:outline-none focus:border-blue-500">
+                    <option value="">Any Time</option>
+                    <option value="today">Today</option>
+                    <option value="week">This Week</option>
+                    <option value="month">This Month</option>
                   </select>
                 </div>
               </div>
             )}
-            
+
+            {showFilter && (
+              <div className="bg-surface rounded-lg border border-line shadow-soft p-4 mb-5">
+                <label className="block text-[10px] font-bold text-muted mb-1.5">
+                  ดูข้อมูลย้อนหลัง (เฉพาะเคสที่ปิด/ยกเลิกแล้ว — เคสที่ยังไม่ปิดแสดงเสมออยู่แล้ว)
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input type="date" value={historyStartDate} onChange={e => setHistoryStartDate(e.target.value)}
+                    className="bg-paper border border-line rounded-lg p-2 text-xs font-medium text-ink-soft focus:outline-none focus:border-blue-500" />
+                  <span className="text-xs text-muted">ถึง</span>
+                  <input type="date" value={historyEndDate} onChange={e => setHistoryEndDate(e.target.value)}
+                    className="bg-paper border border-line rounded-lg p-2 text-xs font-medium text-ink-soft focus:outline-none focus:border-blue-500" />
+                  {(historyStartDate || historyEndDate) && (
+                    <button onClick={() => { setHistoryStartDate(''); setHistoryEndDate(''); }}
+                      className="text-xs font-semibold text-rose-500 hover:text-rose-700 transition-colors">
+                      รีเซ็ต (กลับไปดู 180 วันล่าสุด)
+                    </button>
+                  )}
+                  <span className="text-[10px] text-muted ml-auto">
+                    {historyStartDate || historyEndDate ? '' : 'ค่าเริ่มต้น: 180 วันล่าสุด'}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Loading & Empty States Management */}
             {isLoading ? (
-              <div className="bg-white border border-slate-100 rounded-2xl shadow-sm p-16 text-center flex flex-col items-center gap-3 text-slate-400">
-                <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-sm font-bold tracking-widest uppercase">Loading Tickets...</span>
+              <div className="bg-surface border border-line rounded-lg shadow-soft p-16 text-center flex flex-col items-center gap-3 text-muted">
+                <LoaderCircle className="w-8 h-8 animate-spin text-blue-500" />
+                <span className="text-sm font-medium">กำลังโหลดรายการ...</span>
               </div>
             ) : filteredRequests.length === 0 ? (
-              <div className="bg-white border border-slate-100 rounded-2xl shadow-sm p-20 text-center flex flex-col items-center justify-center gap-3">
-                <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mb-2">
-                  <Search className="w-8 h-8 text-slate-300" />
+              <div className="dash-rise bg-surface border border-line rounded-lg shadow-soft p-16 text-center flex flex-col items-center justify-center gap-3">
+                <div className="w-16 h-16 bg-paper rounded-lg flex items-center justify-center mb-2">
+                  <Sparkles className="w-8 h-8 text-amber" />
                 </div>
-                <p className="text-slate-600 font-bold text-sm">ไม่พบรายการ Ticket</p>
-                <p className="text-slate-400 text-xs font-medium">ลองเปลี่ยนเงื่อนไขการค้นหาหรือสร้าง Ticket ใหม่</p>
+                <p className="font-display text-lg font-semibold text-ink">ยังไม่พบรายการ</p>
+                <p className="text-muted text-sm">ลองเปลี่ยนคำค้นหาหรือตัวกรองดูนะ</p>
               </div>
             ) : layoutMode === 'grid' ? (
 
-              /* --- GRID VIEW LAYOUT --- */
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 animate-in fade-in duration-300">
-                {paginatedRequests.map((req) => (
-                  <div
-                    key={req.id}
-                    onClick={() => fetchTicketDetails(req.id)}
-                    className={`relative border rounded-3xl p-6 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between cursor-pointer group overflow-hidden ${
-                      req.status === 'Pending' || !req.empCode_assigned
-                        ? 'bg-orange-50 border-orange-200 border-l-[6px] border-l-orange-500'
-                        : 'bg-white border-slate-100'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center justify-between mb-4">
-                        <span className={`inline-flex px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${getPriorityStyle(req.priority)}`}>
+              /* --- GRID VIEW LAYOUT (Formal) --- */
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 animate-in fade-in">
+                {paginatedRequests.map((req) => {
+                  const requestType = req.problem_type_name || req.request_type || 'General Request';
+                  return (
+                    <div
+                      key={req.id}
+                      onClick={() => fetchTicketDetails(req.id)}
+                      className="lift bg-surface rounded-lg border border-line p-4 shadow-soft hover:border-ink-soft cursor-pointer flex flex-col group"
+                    >
+                      <div className="flex justify-between items-start mb-3">
+                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border ${getPriorityStyle(req.priority)}`}>
                           {req.priority}
                         </span>
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ring-1 ring-inset ${getStatusStyle(req.status)}`}>
-                          {displayStatusLabel(req.status)}
-                        </span>
+                        {/* ✅ ใช้ Emoji นำหน้าสถานะ */}
+                        <StatusBadge status={req.status} />
                       </div>
 
-                      <h3 className="text-base font-bold text-slate-800 group-hover:text-indigo-600 transition-colors truncate mb-1">
+                      <h3 className="font-semibold text-ink text-sm mb-1 group-hover:text-blue-600 line-clamp-2 transition-colors">
                         {req.project_name}
                       </h3>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                        {req.req_id}
-                        {(req.status === 'Pending' || !req.empCode_assigned) && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-400 text-white shadow-sm animate-pulse">
-                            NEW
+
+                      <div className="flex items-center gap-2 mb-3">
+                        <p className="text-xs text-muted font-mono">{req.req_id}</p>
+                        {req.status === 'Open' && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-lg text-[9px] font-bold bg-red-600 text-white">
+                            New
                           </span>
                         )}
-                      </p>
+                      </div>
 
-                      <div className="mb-4">
-                        <span className={`inline-flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-xl border shadow-sm
-                          ${getDeviceTypeColor(requestTypeMap[req.request_type] || 'office').bg}
-                          ${getDeviceTypeColor(requestTypeMap[req.request_type] || 'office').text}
-                          ${getDeviceTypeColor(requestTypeMap[req.request_type] || 'office').border}`}>
-                          {getRequestTypeIcon(req.request_type)}
-                          <span className="truncate max-w-[150px]">{req.problem_type_name || req.request_type}</span>
+                      <div className="text-xs text-muted mb-4 flex flex-col gap-0.5">
+                        <span className="flex items-center gap-1.5 truncate">
+                          <span className="[&_svg]:w-3.5 [&_svg]:h-3.5 text-muted flex items-center justify-center shrink-0">
+                            {getRequestTypeIcon(requestType)}
+                          </span>
+                          <span className="truncate">{requestType}</span>
                         </span>
+                        {req.problem_subtype_name && (
+                          <span className="text-[10px] text-muted pl-5 truncate">
+                            › {req.problem_subtype_name}
+                          </span>
+                        )}
                       </div>
 
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 mb-5">
-                        <MapPin className="w-4 h-4 shrink-0 text-slate-400" />
-                        <span className="truncate">{req.location}</span>
-                      </div>
-                    </div>
-
-                    <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2" title={`Requester: ${req.requester_name}`}>
-                          <img src={req.emp_pic_url || `http://dcidmc.dci.daikin.co.jp/PICTURE/${req.empCode_created}.jpg`} alt="requester"
-                            className="w-8 h-8 rounded-full object-cover ring-2 ring-slate-100 bg-slate-50 shadow-sm"
-                            onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(req.requester_name)}&background=e0e7ff&color=4f46e5`; }} />
-                          <span className="text-[11px] font-bold text-slate-500 max-w-[60px] truncate">{req.requester_name.split(' ')[0]}</span>
+                      <div className="mt-auto border-t border-line pt-3 flex flex-col gap-2">
+                        <div className="flex justify-between items-center text-xs text-muted">
+                          <span className="flex items-center gap-1 truncate max-w-[60%]">
+                            <MapPin className="w-3.5 h-3.5 text-muted shrink-0" />
+                            <span className="truncate">{req.location}</span>
+                          </span>
+                          <span className="shrink-0">{formatDateShort(req.target_date)}</span>
                         </div>
 
-                        <ArrowRight className="w-3.5 h-3.5 text-slate-300" />
+                        <div className="flex items-center justify-between text-xs pt-1">
+                          <div className="flex items-center gap-1.5">
+                            <User className="w-3.5 h-3.5 text-muted" />
+                            <span className="text-slate-700">{req.requester_name?.split(' ')[0] || req.empCode_created}</span>
+                          </div>
 
-                        <div className="flex items-center gap-2">
-                          {req.empCode_assigned ? (
-                            <div className="flex items-center gap-2" title={`Assignee: ${req.assigned_name}`}>
-                              <img src={`http://dcidmc.dci.daikin.co.jp/PICTURE/${req.empCode_assigned}.jpg`} alt="assignee"
-                                className="w-8 h-8 rounded-full object-cover ring-2 ring-indigo-50 bg-indigo-50 shadow-sm"
-                                onError={(e) => { e.target.onerror = null; e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(req.assigned_name || req.empCode_assigned)}&background=e0e7ff&color=4f46e5`; }} />
-                              <span className="text-[11px] font-bold text-indigo-600 max-w-[60px] truncate">{req.assigned_name?.split(' ')[0] || req.empCode_assigned}</span>
-                            </div>
-                          ) : (
-                            <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-dashed border-slate-200">Unassigned</span>
-                          )}
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-muted">Assigned:</span>
+                            {req.empCode_assigned ? (
+                              <span className="text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-200 text-[10px] font-semibold">
+                                {req.assigned_name?.split(' ')[0] || req.empCode_assigned}
+                              </span>
+                            ) : (
+                              <span className="text-muted bg-paper px-2 py-0.5 rounded-lg border border-line border-dashed text-[10px] font-medium">
+                                Unassigned
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-
-                      <div className="text-right">
-                        <p className="text-xs font-black text-slate-500">Due: {formatDateShort(req.target_date)}</p>
-                        {req.accepted_at && req.completed_at ? (
-                          <p className="text-xs font-bold text-emerald-500 mt-0.5">⏱ {formatElapsedTime(req.accepted_at, req.completed_at)}</p>
-                        ) : req.accepted_at ? (
-                          <p className="text-xs font-bold text-indigo-500 mt-0.5">In progress...</p>
-                        ) : null}
-                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
 
-              /* --- LIST VIEW LAYOUT (Modern Compact) --- */
-              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto animate-in fade-in duration-300">
-                <table className="w-full text-left text-sm whitespace-nowrap table-fixed">
-                  <thead className="bg-slate-50/80 text-slate-800 text-[12px] uppercase font-black tracking-widest border-b border-slate-100">
-  <tr>
-    <th className="px-4 py-4 w-24" onClick={() => handleSort('priority')}>Priority<SortIcon field="priority"/></th>
-    <th className="px-4 py-4 w-52" onClick={() => handleSort('project_name')}>Problem<SortIcon field="project_name"/></th>
-    <th className="px-4 py-4 w-40">Category</th>
-    <th className="px-4 py-4 w-32" onClick={() => handleSort('status')}>Status<SortIcon field="status"/></th>
-    <th className="px-4 py-4 w-40">Location</th>
-    <th className="px-4 py-4 w-28">Requester</th>
-    <th className="px-4 py-4 w-28">In Charge</th>
-    <th className="px-4 py-4 w-28 text-right" onClick={() => handleSort('target_date')}>Target Date<SortIcon field="target_date"/></th>
-    <th className="px-4 py-4 w-10"></th>
-  </tr>
-</thead>
-                  <tbody className="divide-y divide-slate-50 text-sm">
-                    {paginatedRequests.map((req) => (
-                      <tr 
-                        key={req.id}
-                        onClick={() => fetchTicketDetails(req.id)}
-                        className={`relative transition-colors group cursor-pointer ${
-                          req.status === 'Pending' || !req.empCode_assigned
-                            ? 'bg-orange-50 hover:bg-orange-100/50'
-                            : 'hover:bg-indigo-50/40'
-                        }`}
-                      >
-                        {/* Priority */}
-                        <td className={`px-6 py-3 ${req.status === 'Pending' || !req.empCode_assigned ? 'border-l-[6px] border-l-orange-500' : 'border-l-[6px] border-l-transparent'}`}>
-                          <span className={`inline-flex px-2.5 py-1 rounded-md text-[12px] font-black uppercase tracking-widest border ${getPriorityStyle(req.priority)}`}>
-                            {req.priority}
-                            
-                          </span>
-                         
-                        </td>
+              /* --- LIST VIEW LAYOUT (Formal Table) --- */
+              <div className="bg-surface border border-line rounded-lg shadow-soft overflow-x-auto animate-in fade-in">
+                <table className="w-full text-left text-sm border-collapse min-w-[1000px]">
+                  <thead className="bg-paper border-b border-line text-ink-soft text-[11px] font-semibold tracking-wider">
+                    <tr>
+                      <th className="w-1 p-0"></th>
+                      <th className="pl-4 pr-2 py-3 cursor-pointer hover:text-ink transition-colors" onClick={() => handleSort('priority')}>ความเร่งด่วน<SortIcon field="priority" /></th>
+                      <th className="px-3 py-3 cursor-pointer hover:text-ink transition-colors" onClick={() => handleSort('req_id')}>เลขเคส<SortIcon field="req_id" /></th>
+                      <th className="px-3 py-3 cursor-pointer hover:text-ink transition-colors" onClick={() => handleSort('project_name')}>ปัญหา / เคส<SortIcon field="project_name" /></th>
+                      <th className="px-3 py-3 cursor-pointer hover:text-ink transition-colors" onClick={() => handleSort('status')}>สถานะ<SortIcon field="status" /></th>
+                      <th className="w-[180px] min-w-[180px] px-3 py-3">สถานที่</th>
+                      <th className="px-3 py-3">ผู้แจ้ง</th>
+                      <th className="px-3 py-3">ผู้รับผิดชอบ</th>
+                      <th className="px-4 py-3 text-right cursor-pointer hover:text-ink transition-colors" onClick={() => handleSort('created_at')}>วันที่สร้าง<SortIcon field="created_at" /></th>
+                      <th className="pr-4 py-3"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-sm">
+                    {paginatedRequests.map((req) => {
+                      const isNewTicket = req.status === 'Open' || (!req.empCode_assigned && !['Rejected', 'Closed', 'Cancelled'].includes(req.status));
+                      const [mainLocation, subLocation] = (req.location || '').split(' › ', 2);
 
-                        {/* Project Name */}
-                        <td className="px-6 py-3 pr-2">
-                          <p className="text-sm font-bold text-slate-800 group-hover:text-indigo-600 transition-colors truncate max-w-[250px]">{req.project_name}</p>
-                          <p className="text-[10px] font-bold text-slate-400 mt-0.5 uppercase tracking-wider flex items-center gap-2">
-                            {req.req_id}
-                            {(req.status === 'Pending' || !req.empCode_assigned) && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-400 text-white shadow-sm animate-pulse">
-                                NEW
+                      return (
+                        <tr
+                          key={req.id}
+                          onClick={() => fetchTicketDetails(req.id)}
+                          className="group cursor-pointer hover:bg-paper transition-colors"
+                        >
+                          <td className={`w-1 p-0 border-l-[3px] ${getPriorityBorder(req.priority)}`}></td>
+
+                          {/* Priority */}
+                          <td className="pl-4 pr-2 py-3">
+                            <span className={`inline-flex px-2 py-1 rounded-lg text-[10px] font-bold border ${getPriorityStyle(req.priority)}`}>
+                              {req.priority}
+                            </span>
+                          </td>
+
+                          {/* Ticket No. */}
+                          <td className="px-3 py-3">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-[12px] font-mono text-ink-soft whitespace-nowrap">{req.req_id}</p>
+                              {isNewTicket && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded-lg text-[9px] font-bold bg-red-600 text-white">
+                                  New
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Problem | Ticket */}
+                          <td className="px-3 py-3">
+                            <p title={req.project_name} className="font-medium text-ink group-hover:text-blue-600 transition-colors line-clamp-1">
+                              {req.project_name}
+                            </p>
+                            <p className="text-[11px] text-muted mt-1 flex items-center gap-1 truncate">
+                              <span className="[&_svg]:w-3 [&_svg]:h-3 text-muted shrink-0">
+                                {getRequestTypeIcon(req.problem_type_name || req.request_type)}
+                              </span>
+                              <span className="truncate">{req.problem_type_name || req.request_type}</span>
+                              {req.problem_subtype_name && (
+                                <span className="text-muted shrink-0">› {req.problem_subtype_name}</span>
+                              )}
+                            </p>
+                          </td>
+
+                          {/* Status */}
+                          <td className="px-3 py-3">
+                            {/* ✅ ใช้ Emoji นำหน้าสถานะ */}
+                            <StatusBadge status={req.status} />
+                          </td>
+
+                          {/* Location */}
+                          <td className="w-[180px] min-w-[180px] px-3 py-3 text-[11px] text-ink-soft">
+                            <span className="flex items-start gap-1">
+                              <MapPin className="w-3.5 h-3.5 text-muted shrink-0" />
+                              <span className="flex min-w-0 max-w-[160px] flex-col leading-4">
+                                <span className="truncate" title={mainLocation}>{mainLocation}</span>
+                                {subLocation && <span className="truncate text-muted" title={subLocation}>{subLocation}</span>}
+                              </span>
+                            </span>
+                          </td>
+
+                          {/* Requester */}
+                          <td className="px-3 py-3 text-[11px] text-ink-soft">
+                            <span className="text-slate-700">{req.requester_name?.split(' ')[0] || req.empCode_created}</span>
+                          </td>
+
+                          {/* In Charge */}
+                          <td className="px-3 py-3 text-[11px]">
+                            {req.empCode_assigned ? (
+                              <span className="inline-flex font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-1 rounded-lg truncate max-w-[120px]">
+                                {req.assigned_name?.split(' ')[0] || req.empCode_assigned}
+                              </span>
+                            ) : (
+                              <span className="inline-flex text-muted bg-paper px-2 py-1 rounded-lg border border-dashed border-line">
+                                Unassigned
                               </span>
                             )}
-                          </p>
-                        </td>
+                          </td>
 
-                        {/* Category */}
-                        <td className="px-6 py-3">
-                          <span className={`inline-flex items-center gap-2 text-[11px] font-bold px-2.5 py-1 rounded-lg w-fit border shadow-sm
-                            ${getDeviceTypeColor(requestTypeMap[req.request_type] || 'office').bg}
-                            ${getDeviceTypeColor(requestTypeMap[req.request_type] || 'office').text}
-                            ${getDeviceTypeColor(requestTypeMap[req.request_type] || 'office').border}`}>
-                            {getRequestTypeIcon(req.request_type)}
-                            <span className="truncate max-w-[120px]">{req.problem_type_name || req.request_type}</span>
-                          </span>
-                        </td>
+                          {/* Date Created */}
+                          <td className="px-4 py-3 text-right">
+                            <p className="text-xs text-ink-soft">{formatDateShort(req.created_at)}</p>
+                          </td>
 
-                        {/* Status */}
-                        <td className="px-6 py-3">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ring-1 ring-inset ${getStatusStyle(req.status)}`}>
-                            <span className={getStatusDot(req.status)} />
-                            {displayStatusLabel(req.status)}
-                          </span>
-                        </td>
-
-                        {/* Location */}
-                        <td className="px-6 py-3">
-                          <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
-                            <MapPin className="w-3.5 h-3.5 shrink-0 text-slate-900" /> {req.location}
-                          </span>
-                        </td>
-
-                        {/* Requester */}
-                        <td className="px-6 py-3">
-                          <div className="flex items-center" title={`Requester: ${req.requester_name}`}>
-                            <span className="text-[12px] font-bold text-slate-700 truncate max-w-[150px]">{req.requester_name?.split(' ')[0] || req.empCode_created}</span>
-                          </div>
-                        </td>
-
-                        {/* In Charge */}
-                        <td className="px-6 py-3">
-                          <div className="flex items-center gap-2" title={req.empCode_assigned ? `In Charge: ${req.assigned_name}` : 'Unassigned'}>
-                            {req.empCode_assigned ? (
-                              <span className="text-[12px] font-bold text-indigo-700 truncate max-w-[150px] bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100">{req.assigned_name?.split(' ')[0] || req.empCode_assigned}</span>
-                            ) : (
-                              <span className="text-[11px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-md border border-dashed border-slate-200">Unassigned</span>
-                            )}
-                            
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-                       
-                       
-                      </p>
-                          </div>
-                        </td>
-
-                        {/* Target Date */}
-                        <td className="px-6 py-3 text-right">
-                          <p className="text-xs font-bold text-slate-600">{formatDateShort(req.target_date)}</p>
-                          {req.accepted_at && req.completed_at ? (
-                            <p className="text-xs font-bold text-emerald-500 mt-0.5">⏱ {formatElapsedTime(req.accepted_at, req.completed_at)}</p>
-                          ) : req.accepted_at ? (
-                            <p className="text-[10px] font-bold text-indigo-500 mt-0.5">In progress...</p>
-                          ) : null}
-                        </td>
-
-                        {/* Action Icon */}
-                        <td className="px-6 py-3 text-right">
-                          <button className="text-slate-400 hover:text-indigo-600 p-2 rounded-full hover:bg-indigo-100/50 transition-colors">
-                            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                          {/* Chevron */}
+                          <td className="pr-4 py-3 text-right">
+                            <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-500 transition-colors inline-block" />
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* Pagination */}
+            {filteredRequests.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 mt-4 bg-surface border border-line rounded-lg shadow-soft">
+                <p className="text-xs font-medium text-muted">
+                  แสดง {(currentPage - 1) * ITEMS_PER_PAGE + 1} ถึง {Math.min(currentPage * ITEMS_PER_PAGE, filteredRequests.length)} จาก {filteredRequests.length} รายการ
+                </p>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1}
+                    className="px-3 py-1.5 rounded-lg border border-line text-xs font-semibold text-ink-soft hover:bg-paper disabled:opacity-30 transition-colors">หน้าแรก</button>
+                  <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
+                    className="px-3 py-1.5 rounded-lg border border-line text-xs font-semibold text-ink-soft hover:bg-paper disabled:opacity-30 transition-colors">ก่อนหน้า</button>
+
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let page;
+                    if (totalPages <= 5) page = i + 1;
+                    else if (currentPage <= 3) page = i + 1;
+                    else if (currentPage >= totalPages - 2) page = totalPages - 4 + i;
+                    else page = currentPage - 2 + i;
+                    return (
+                      <button key={page} onClick={() => setCurrentPage(page)}
+                        className={`w-8 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${currentPage === page
+                          ? 'bg-ink text-white border-ink'
+                          : 'bg-surface text-ink-soft border-line hover:bg-paper'
+                          }`}>{page}</button>
+                    );
+                  })}
+
+                  <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
+                    className="px-3 py-1.5 rounded-lg border border-line text-xs font-semibold text-ink-soft hover:bg-paper disabled:opacity-30 transition-colors">ถัดไป</button>
+                  <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}
+                    className="px-3 py-1.5 rounded-lg border border-line text-xs font-semibold text-ink-soft hover:bg-paper disabled:opacity-30 transition-colors">หน้าสุดท้าย</button>
+                </div>
               </div>
             )}
           </div>
@@ -873,6 +1247,7 @@ const getStatusStyle = (status) => {
           getStatusStyle,
           getPriorityStyle,
           getRequestTypeIcon,
+          getDeviceTypeColor,
           displayStatusLabel
         }}
         actions={{
@@ -881,9 +1256,14 @@ const getStatusStyle = (status) => {
           handleAcceptTicket,
           handleCancelTicket,
           handleDeleteTicket,
+          handleResumeTicket,
+          handleAddHelper,
+          handleRemoveHelper,
+          handleAssignTicket,
           setCommentMode,
           setCommentText,
-          setCommentModalOpen
+          setCommentModalOpen,
+          isDeleting
         }}
       />
 
@@ -893,62 +1273,183 @@ const getStatusStyle = (status) => {
       {commentModalOpen && selectedTicket && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={() => setCommentModalOpen(false)}></div>
-          <div className="bg-white rounded-[2rem] w-full max-w-lg shadow-2xl z-[90] p-8 border border-white/50 animate-in zoom-in-95 duration-200">
+          <div className={`bg-surface rounded-lg w-full ${commentMode === 'close' ? 'max-w-2xl' : 'max-w-lg max-h-[90vh]'} shadow-2xl z-[90] p-6 sm:p-8 border border-line animate-in zoom-in-95 overflow-visible flex flex-col`}>
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-black text-slate-800">
-                {commentMode === 'reject' ? 'Reject Ticket' : commentMode === 'close' ? 'Close Ticket' : 'Add Comment'}
-              </h3>
-              <button onClick={() => setCommentModalOpen(false)} className="p-2 bg-slate-50 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
-                <X className="w-5 h-5" />
+              <div className="flex items-center gap-3">
+                {commentMode === 'close' && (
+                  <div className="w-10 h-10 rounded-lg bg-paper text-ink-soft flex items-center justify-center border border-line">
+                    <CheckCircle className="w-5 h-5" />
+                  </div>
+                )}
+                <div>
+                  <h3 className="text-lg font-bold text-ink">
+                    {commentMode === 'reject' ? 'Reject Ticket'
+                      : commentMode === 'close' ? 'Close Ticket'
+                        : commentMode === 'hold' ? 'Hold Ticket'
+                          : 'Add Comment'}
+                  </h3>
+                  {commentMode === 'close' && <p className="text-xs font-medium text-muted mt-0.5">บันทึกผลการแก้ไขและอุปกรณ์ที่ใช้กับเคสนี้</p>}
+                </div>
+              </div>
+              <button onClick={() => setCommentModalOpen(false)} className="p-2 bg-paper hover:bg-paper rounded-lg transition-colors text-muted border border-line">
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {commentMode === 'close' ? (
-              <div className="space-y-5">
-                <div>
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">สาเหตุของปัญหา <span className="text-rose-500">*</span></label>
-                  <textarea rows="3" value={rootCause} onChange={(e) => setRootCause(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm font-medium text-slate-700 focus:bg-white focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 resize-none transition-all"
-                    placeholder="ระบุสาเหตุ (เช่น RAM เสีย, อะไหล่ชำรุด...)" />
+              <div className="space-y-5 overflow-visible pr-1">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-ink-soft mb-1.5">สาเหตุของปัญหา <span className="text-rose-500">*</span></label>
+                    <textarea rows="4" value={rootCause} onChange={(e) => setRootCause(e.target.value)}
+                      className="w-full bg-paper border border-line rounded-lg p-3 text-sm text-ink-soft focus:bg-surface focus:outline-none focus:border-ink focus:ring-1 focus:ring-ink resize-none transition-colors"
+                      placeholder="เช่น RAM เสีย, อะไหล่ชำรุด..." />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-ink-soft mb-1.5">วิธีแก้ไข <span className="text-rose-500">*</span></label>
+                    <textarea rows="4" value={solution} onChange={(e) => setSolution(e.target.value)}
+                      className="w-full bg-paper border border-line rounded-lg p-3 text-sm text-ink-soft focus:bg-surface focus:outline-none focus:border-ink focus:ring-1 focus:ring-ink resize-none transition-colors"
+                      placeholder="เช่น เปลี่ยนอะไหล่, ตั้งค่าใหม่..." />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">วิธีแก้ไข <span className="text-rose-500">*</span></label>
-                  <textarea rows="3" value={solution} onChange={(e) => setSolution(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm font-medium text-slate-700 focus:bg-white focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 resize-none transition-all"
-                    placeholder="ระบุการแก้ไข (เช่น เปลี่ยนอะไหล่, ตั้งค่าใหม่...)" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Comment เพิ่มเติม</label>
-                  <textarea rows="2" value={commentText} onChange={(e) => setCommentText(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm font-medium text-slate-700 focus:bg-white focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 resize-none transition-all"
-                    placeholder="หมายเหตุ (ไม่บังคับ)" />
-                </div>
-              </div>
-            ) : (
-              <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
-                  {commentMode === 'reject' ? 'เหตุผลการปฏิเสธ (Required)' : 'ข้อความ (Message)'}
-                </label>
-                <textarea rows="4" value={commentText} onChange={(e) => setCommentText(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm font-medium text-slate-700 focus:bg-white focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 resize-none transition-all"
-                  placeholder={commentMode === 'reject' ? "ระบุเหตุผลที่ไม่สามารถรับเคสได้..." : "พิมพ์ข้อความที่ต้องการแจ้ง..."} />
-              </div>
-            )}
 
-            <div className="flex justify-end gap-3 mt-8">
-              <button onClick={() => setCommentModalOpen(false)} className="px-6 py-3 rounded-xl text-xs font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 transition-colors">
+                {/* ✅ Safety checklist - ต้องติ๊กครบทั้ง 3 ข้อถึงจะปิดเคสได้ */}
+                <div className={`rounded-lg border p-4 transition-colors ${allSafetyChecked ? 'border-emerald-300 bg-emerald-50' : 'border-amber-300 bg-amber-50'}`}>
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex items-start gap-2">
+                      {allSafetyChecked
+                        ? <CheckCircle className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                        : <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />}
+                      <div>
+                        <label className="block text-xs font-bold text-ink">
+                          ตรวจสอบความปลอดภัยก่อนปิดเคส <span className="text-rose-500">*</span>
+                        </label>
+                        <p className="text-[11px] text-ink-soft mt-0.5">ยืนยันให้ครบทั้ง 3 ข้อก่อนกดปิดเคส</p>
+                      </div>
+                    </div>
+                    <span className={`shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-bold border ${allSafetyChecked ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-amber-100 text-amber-700 border-amber-200'}`}>
+                      {SAFETY_CHECK_ITEMS.filter(i => safetyChecks[i.key]).length}/{SAFETY_CHECK_ITEMS.length}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {SAFETY_CHECK_ITEMS.map((item, idx) => (
+                      <label
+                        key={item.key}
+                        htmlFor={`safety-${item.key}`}
+                        className={`flex items-start gap-3 bg-surface border rounded-lg px-3 py-2.5 cursor-pointer transition-colors shadow-soft ${safetyChecks[item.key] ? 'border-emerald-300' : 'border-line hover:border-line'}`}
+                      >
+                        <input
+                          id={`safety-${item.key}`}
+                          type="checkbox"
+                          checked={safetyChecks[item.key]}
+                          onChange={(e) => setSafetyChecks(prev => ({ ...prev, [item.key]: e.target.checked }))}
+                          className="mt-0.5 w-4 h-4 shrink-0 accent-emerald-600 cursor-pointer"
+                        />
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-ink">{idx + 1}. {item.label}</p>
+                          <p className="text-[11px] text-muted mt-0.5">{item.hint}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Stock item picker */}
+                <div className="rounded-lg border border-line bg-paper p-4">
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div>
+                      <label className="block text-xs font-bold text-ink-soft">อุปกรณ์ที่ใช้กับเคส <span className="text-muted font-normal">(ไม่บังคับ)</span></label>
+                      <p className="text-[11px] text-muted mt-0.5">เลือกประเภทแล้วเลือกอุปกรณ์จากสต็อก หากมีการเบิกใช้</p>
+                    </div>
+                    {selectedStockItems.length > 0 && (
+                      <span className="shrink-0 rounded-lg bg-blue-100 px-2.5 py-1 text-[10px] font-bold text-blue-700 border border-blue-200">
+                        เลือกแล้ว {selectedStockItems.length} รายการ
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={openStockPicker}
+                    className="w-full flex items-center justify-center gap-2 bg-surface border border-dashed border-line hover:border-ink hover:bg-paper rounded-lg py-2.5 text-xs font-semibold text-ink-soft hover:text-ink transition-colors shadow-soft"
+                  >
+                    <Paperclip className="w-4 h-4" /> เลือกอุปกรณ์จากสต็อก
+                  </button>
+
+                  {/* Selected items list */}
+                  {selectedStockItems.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {selectedStockItems.map((item) => (
+                        <div key={item.productId} className="flex items-center gap-3 bg-surface border border-line rounded-lg px-3 py-2 shadow-soft">
+                          <div className="w-8 h-8 rounded-lg bg-paper border border-line flex items-center justify-center shrink-0">
+                            <Laptop className="w-4 h-4 text-muted" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-ink truncate">{item.productName}</p>
+                            <p className="text-[10px] text-muted">{item.deviceType}{item.serialNumber ? ` • S/N: ${item.serialNumber} • ${item.fixedAssetCode}` : ''}</p>
+                          </div>
+                          {item.deviceType !== 'Asset' && (
+                            <input type="number" min="1" value={item.qty}
+                              onChange={(e) => updateStockItemQty(item.productId, parseInt(e.target.value, 10) || 1)}
+                              aria-label={`จำนวน ${item.productName}`}
+                              className="w-14 bg-paper border border-line rounded-lg p-1 text-xs font-semibold text-center focus:outline-none focus:border-blue-500" />
+                          )}
+                          <button type="button" aria-label={`ลบ ${item.productName}`} onClick={() => removeStockItem(item.productId)} className="text-muted hover:text-rose-600 transition-colors p-1">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+            ) : commentMode === 'hold' ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-ink-soft mb-1.5">
+                    เหตุผลที่ต้อง Hold <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea rows="3" value={holdReason} onChange={e => setHoldReason(e.target.value)}
+                    className="w-full bg-paper border border-line rounded-lg p-3 text-sm text-ink-soft focus:bg-surface focus:outline-none focus:border-ink focus:ring-1 focus:ring-amber-500 resize-none transition-colors"
+                    placeholder="เช่น รออะไหล่จาก vendor, รอ approve จาก manager..." />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-ink-soft mb-1.5">
+                    คาดว่าจะกลับมาดำเนินการได้
+                  </label>
+                  <input type="date" value={expectedAt} onChange={e => setExpectedAt(e.target.value)}
+                    className="w-full bg-paper border border-line rounded-lg p-2.5 text-sm text-ink-soft focus:bg-surface focus:outline-none focus:border-ink transition-colors" />
+                </div>
+              </div>)
+              : (
+
+                <div>
+                  <label className="block text-xs font-bold text-ink-soft mb-1.5">
+                    {commentMode === 'reject' ? 'เหตุผลการปฏิเสธ (Required)' : 'ข้อความ (Message)'}
+                  </label>
+                  <textarea rows="4" value={commentText} onChange={(e) => setCommentText(e.target.value)}
+                    className="w-full bg-paper border border-line rounded-lg p-3 text-sm text-ink-soft focus:bg-surface focus:outline-none focus:border-ink focus:ring-1 focus:ring-ink resize-none transition-colors"
+                    placeholder={commentMode === 'reject' ? "ระบุเหตุผลที่ไม่สามารถรับเคสได้..." : "พิมพ์ข้อความที่ต้องการแจ้ง..."} />
+                </div>
+              )}
+
+            <div className="flex justify-end gap-3 mt-6 pt-5 border-t border-line">
+              <button onClick={() => setCommentModalOpen(false)} className="px-5 py-2 rounded-lg text-sm font-semibold text-ink-soft bg-surface border border-line hover:bg-paper transition-colors shadow-soft">
                 Cancel
               </button>
               <button
                 onClick={() => openConfirm({
                   title: commentMode === 'close' ? 'Confirm ปิดเคส' : commentMode === 'reject' ? 'Confirm Reject' : 'Confirm Comment',
-                  message: commentMode === 'close' ? `ยืนยันการปิดเคส ${selectedTicket.req_id}?` : commentMode === 'reject' ? `ยืนยันการปฏิเสธเคส ${selectedTicket.req_id}?` : 'บันทึกข้อความลงในระบบ?',
+                  message: commentMode === 'close' ? `ยืนยันการปิดเคส ${selectedTicket.req_id}?\n(ตรวจความปลอดภัยแล้ว: ปลั๊กไฟ OK, สายไฟ OK, พื้นที่ปฏิบัติงาน OK)` : commentMode === 'reject' ? `ยืนยันการปฏิเสธเคส ${selectedTicket.req_id}?` : 'บันทึกข้อความลงในระบบ?',
                   confirmLabel: commentMode === 'close' ? 'ปิดเคส' : commentMode === 'reject' ? 'Reject' : 'Save Comment',
                   onConfirm: handleSaveComment
                 })}
-                disabled={commentMode === 'close' && (!rootCause.trim() || !solution.trim())}
-                className={`px-8 py-3 rounded-xl text-xs font-bold text-white transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:pointer-events-none
-                  ${commentMode === 'close' ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/30' : commentMode === 'reject' ? 'bg-rose-500 hover:bg-rose-600 shadow-rose-500/30' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/30'}`}
+                disabled={commentMode === 'close' && (!rootCause.trim() || !solution.trim() || !allSafetyChecked)}
+                className={`px-6 py-2 rounded-lg text-sm font-semibold text-white transition-colors shadow-soft disabled:opacity-50 disabled:pointer-events-none
+                  ${commentMode === 'close' ? 'bg-emerald-600 hover:bg-emerald-700' : commentMode === 'reject' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-ink hover:bg-ink-soft'}`}
               >
                 {commentMode === 'close' ? 'Submit & Close' : commentMode === 'reject' ? 'Reject Ticket' : 'Post Comment'}
               </button>
@@ -957,35 +1458,243 @@ const getStatusStyle = (status) => {
         </div>
       )}
 
-      {/* Confirm Modal */}
-      {pendingAction && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={closeConfirm}></div>
-          <div className="relative bg-white rounded-3xl w-full max-w-sm shadow-2xl border border-white/50 overflow-hidden z-[110] animate-in zoom-in-95 duration-200 p-6 text-center">
-            <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4 ring-4 ring-rose-50/50">
-              <AlertCircle className="w-8 h-8 text-rose-500" />
-            </div>
-            <h3 className="text-xl font-black text-slate-800 mb-2">{pendingAction.title}</h3>
-            <p className="text-sm font-medium text-slate-500 mb-8 px-4 leading-relaxed">{pendingAction.message}</p>
+      {/* Stock Item Picker Modal (two steps: device type -> products) */}
+      {stockPickerOpen && (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={closeStockPicker}></div>
+          <div className="relative bg-surface rounded-lg w-full max-w-2xl shadow-2xl z-[96] flex flex-col max-h-[85vh] animate-in zoom-in-95 overflow-hidden border border-line">
 
-            <div className="flex gap-3 w-full">
-              <button onClick={closeConfirm} className="flex-1 py-3 rounded-xl text-xs font-bold text-slate-600 bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-colors">
-                Cancel
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-line flex items-center justify-between shrink-0 bg-paper">
+              <div className="flex items-center gap-3">
+                {stockPickerStep === 'products' && (
+                  <button type="button" onClick={backToTypeSelection} className="p-1.5 hover:bg-line rounded-lg border border-transparent hover:border-line transition-colors text-ink-soft">
+                    <ChevronRight className="w-4 h-4 rotate-180" />
+                  </button>
+                )}
+                <div>
+                  <h3 className="text-base font-bold text-ink">
+                    {stockPickerStep === 'type' ? 'เลือกประเภทอุปกรณ์' : selectedDeviceType?.Label}
+                  </h3>
+                  <p className="text-xs text-muted mt-0.5">
+                    {stockPickerStep === 'type' ? 'เลือกหมวดหมู่ก่อนเพื่อดูอุปกรณ์' : 'แตะเพื่อเพิ่มอุปกรณ์'}
+                  </p>
+                </div>
+              </div>
+              <button onClick={closeStockPicker} className="p-1.5 bg-surface border border-line hover:bg-paper rounded-lg transition-colors shadow-soft text-muted">
+                <X className="w-4 h-4" />
               </button>
-              <button onClick={executePendingAction} className="flex-1 py-3 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-500/30 active:scale-95 transition-all">
-                {pendingAction.confirmLabel}
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-5 custom-scrollbar bg-surface">
+              {stockPickerStep === 'type' ? (
+                <>
+                  <div className="relative mb-5">
+                    <Search className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={globalSearchQuery}
+                      onChange={(e) => searchAllProducts(e.target.value)}
+                      placeholder="ค้นหาอุปกรณ์ (ทุกหมวด)..."
+                      className="w-full bg-surface border border-line rounded-lg pl-9 pr-3 py-2 text-sm text-ink-soft focus:outline-none focus:border-ink focus:ring-1 focus:ring-ink transition-colors shadow-soft"
+                    />
+                  </div>
+
+                  {globalSearchQuery.trim() ? (
+                    // ── โหมดค้นหาข้ามหมวด ──
+                    isSearchingGlobal ? (
+                      <div className="flex items-center justify-center py-16 text-muted gap-2">
+                        <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                        <span className="text-xs font-bold">กำลังค้นหา...</span>
+                      </div>
+                    ) : globalSearchResults.length === 0 ? (
+                      <p className="text-sm font-bold text-muted text-center py-16">ไม่พบอุปกรณ์</p>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {globalSearchResults.map((p) => {
+                          const alreadyAdded = selectedStockItems.find(i => i.productId === p.ProductID);
+                          return (
+                            <button
+                              key={p.ProductID}
+                              type="button"
+                              onClick={() => addStockItem(p)}
+                              disabled={p.CurrentStock <= 0}
+                              className="flex flex-col text-left bg-surface border border-line hover:border-ink-soft rounded-lg overflow-hidden transition-colors shadow-soft disabled:opacity-40 disabled:cursor-not-allowed relative"
+                            >
+                              {alreadyAdded && (
+                                <span className="absolute top-2 right-2 z-10 bg-purple-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow">
+                                  ×{alreadyAdded.qty}
+                                </span>
+                              )}
+                              <div className="w-full aspect-square bg-paper flex items-center justify-center overflow-hidden">
+                                {p.ImageURL ? (
+                                  <img src={encodeURI(`${STOCK_HOST}${p.ImageURL}`)} alt={p.ProductName}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }} />
+                                ) : (
+                                  <Laptop className="w-8 h-8 text-slate-300" />
+                                )}
+                              </div>
+                              <div className="p-2.5">
+                                <p className="text-xs font-bold text-ink-soft truncate">{p.ProductName}</p>
+                                <p className="text-[10px] text-muted mt-0.5">
+                                  คงเหลือ {p.CurrentStock}
+                                  {p.LastPrice != null ? ` • ฿${Number(p.LastPrice).toLocaleString('th-TH')}` : ''}
+                                </p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )
+                  ) : (
+                    // ── โหมดเลือกประเภท (ค่า default) ──
+                    isLoadingDeviceTypes ? (
+                      <div className="flex items-center justify-center py-16 text-muted gap-2">
+                        <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                        <span className="text-xs font-bold">กำลังโหลด...</span>
+                      </div>
+                    ) : stockDeviceTypes.length === 0 ? (
+                      <p className="text-sm font-bold text-muted text-center py-16">ไม่พบประเภทอุปกรณ์</p>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {stockDeviceTypes.map((t) => (
+                          <button
+                            key={t.TypeId}
+                            type="button"
+                            onClick={() => selectDeviceType(t)}
+                            className="flex flex-col items-center justify-center gap-2 bg-surface border border-line hover:border-ink-soft hover:bg-paper rounded-lg p-5 transition-colors shadow-soft"
+                          >
+                            <div className="w-12 h-12 rounded-lg bg-purple-50 border border-purple-100 flex items-center justify-center">
+                              <Laptop className="w-5 h-5 text-purple-600" />
+                            </div>
+                            <span className="text-xs font-bold text-ink-soft text-center">{t.Label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  )}
+                </>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    value={productSearchInModal}
+                    onChange={(e) => setProductSearchInModal(e.target.value)}
+                    placeholder={`ค้นหาใน ${selectedDeviceType?.Label}...`}
+                    className="w-full bg-surface border border-line rounded-lg p-3 text-sm font-medium text-ink-soft focus:outline-none focus:border-ink focus:ring-4 focus:ring-ink/10 transition-all mb-4"
+                  />
+
+                  {isLoadingStockProducts ? (
+                    <div className="flex items-center justify-center py-16 text-muted gap-2">
+                      <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-xs font-bold">กำลังโหลด...</span>
+                    </div>
+                  ) : visibleStockProducts.length === 0 ? (
+                    <p className="text-sm font-bold text-muted text-center py-16">ไม่พบอุปกรณ์ในหมวดนี้</p>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {visibleStockProducts.map((p) => {
+                        const alreadyAdded = selectedStockItems.find(i => i.productId === p.ProductID);
+                        return (
+                          <button
+                            key={p.ProductID}
+                            type="button"
+                            onClick={() => addStockItem(p)}
+                            disabled={p.CurrentStock <= 0}
+                            className="flex flex-col text-left bg-surface border border-line hover:border-ink-soft rounded-lg overflow-hidden transition-colors shadow-soft disabled:opacity-40 disabled:cursor-not-allowed relative"
+                          >
+                            {alreadyAdded && (
+                              <span className="absolute top-2 right-2 z-10 bg-purple-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow">
+                                ×{alreadyAdded.qty}
+                              </span>
+                            )}
+                            <div className="w-full aspect-square bg-paper flex items-center justify-center overflow-hidden">
+                              {p.ImageURL ? (
+                                <img src={encodeURI(`${STOCK_HOST}${p.ImageURL}`)} alt={p.ProductName}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }} />
+                              ) : (
+                                <Laptop className="w-8 h-8 text-slate-300" />
+                              )}
+                            </div>
+                            <div className="p-2.5">
+                              <p className="text-xs font-bold text-ink-soft truncate">{p.ProductName}</p>
+                              <p className="text-[10px] text-muted mt-0.5">
+                                คงเหลือ {p.CurrentStock}
+                                {p.LastPrice != null ? ` • ฿${Number(p.LastPrice).toLocaleString('th-TH')}` : ''}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-line bg-surface flex items-center justify-between shrink-0">
+              <span className="text-xs font-bold text-muted">
+                {selectedStockItems.length > 0 ? `เลือกแล้ว ${selectedStockItems.length} รายการ` : 'ยังไม่ได้เลือกอุปกรณ์'}
+              </span>
+              <button type="button" onClick={closeStockPicker}
+                className="px-6 py-2.5 rounded-lg text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 shadow-lg shadow-purple-500/30 active:scale-95 transition-all">
+                เสร็จแล้ว
               </button>
             </div>
           </div>
+
+          {/* Asset serial/code entry - overlays on top when an Asset-type item was just picked */}
+          {assetPickerProduct && (
+            <div className="fixed inset-0 z-[97] flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setAssetPickerProduct(null)}></div>
+              <div className="relative bg-surface rounded-lg w-full max-w-sm shadow-2xl z-[98] p-6 animate-modal-pop">
+                <p className="text-sm font-black text-ink mb-1">{assetPickerProduct.ProductName}</p>
+                <p className="text-xs font-medium text-muted mb-4">ต้องระบุ Serial Number และรหัสครุภัณฑ์ก่อนเพิ่ม</p>
+                <div className="space-y-2.5">
+                  <input type="text" value={assetSerialInput} onChange={(e) => setAssetSerialInput(e.target.value)}
+                    placeholder="Serial Number"
+                    className="w-full bg-paper border border-line rounded-lg p-3 text-sm font-medium focus:outline-none focus:border-ink focus:bg-surface transition-all" />
+                  <input type="text" value={assetCodeInput} onChange={(e) => setAssetCodeInput(e.target.value)}
+                    placeholder="รหัสครุภัณฑ์ (เช่น CO24-001-05)"
+                    className="w-full bg-paper border border-line rounded-lg p-3 text-sm font-medium focus:outline-none focus:border-ink focus:bg-surface transition-all" />
+                </div>
+                <div className="flex gap-2 justify-end mt-5">
+                  <button type="button" onClick={() => setAssetPickerProduct(null)}
+                    className="px-4 py-2.5 text-xs font-bold text-muted hover:bg-paper rounded-lg transition-colors">ยกเลิก</button>
+                  <button type="button" onClick={confirmAddAssetItem}
+                    disabled={!assetSerialInput.trim() || !assetCodeInput.trim()}
+                    className="px-5 py-2.5 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-lg disabled:opacity-40 transition-colors">เพิ่มอุปกรณ์</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={Boolean(pendingAction)}
+        title={pendingAction?.title}
+        message={pendingAction?.message}
+        confirmLabel={pendingAction?.confirmLabel}
+        isLoading={isProcessingAction}
+        onConfirm={executePendingAction}
+        onCancel={closeConfirm}
+      />
 
       {/* New Request Modal */}
       {isModalOpen && (
         <OpenTicketModal
           user={user}
+          isSubmittingTicket={isSubmittingTicket}
           onClose={() => setIsModalOpen(false)}
           onSubmit={async (payload) => {
+            if (isSubmittingRef.current) return;
+            isSubmittingRef.current = true;
+            setIsSubmittingTicket(true);
             try {
               await ticketAPI.createTicket(payload);
               showNotification('Request submitted successfully!', 'success');
@@ -993,6 +1702,9 @@ const getStatusStyle = (status) => {
               fetchRequests();
             } catch (error) {
               showNotification('Failed to submit request', 'error');
+            } finally {
+              isSubmittingRef.current = false;
+              setIsSubmittingTicket(false);
             }
           }}
         />

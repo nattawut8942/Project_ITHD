@@ -9,11 +9,13 @@ import DashboardPage from './pages/DashboardPage';
 import ReportPage from './pages/ReportPage';
 import MasterDataPage from './pages/MasterDataPage';
 import TVMonitor from './pages/TVMonitor';
+import AdminUsersPage from './pages/AdminUsersPage';
+import AdminLoginLogsPage from './pages/AdminLoginLogsPage';
 
 
 function App() {
     return (
-        <Router>
+        <Router basename="/ITHelpDeskSystem">
             <AuthProvider>
                 <Routes>
                     {/* Public routes */}
@@ -60,6 +62,22 @@ function App() {
                         element={
                             <ProtectedRoute>
                                 <MasterDataPage />
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/admin/users"
+                        element={
+                            <ProtectedRoute>
+                                <AdminUsersPage />
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/admin/login-logs"
+                        element={
+                            <ProtectedRoute>
+                                <AdminLoginLogsPage />
                             </ProtectedRoute>
                         }
                     />

@@ -1,17 +1,32 @@
 // frontend/src/components/OpenTicketModal.jsx
 import React, { useState, useEffect } from 'react';
-import { X, Paperclip, Loader2, ChevronDown } from 'lucide-react';
+import { X, Paperclip, Loader2, ChevronDown, Clock, Zap, Flame, AlertTriangle, Send, CheckCircle2, Image as ImageIcon, FileText, Upload, Trash2, Info } from 'lucide-react';
 import { API_BASE } from '../config/api';
 
 const token = () => localStorage.getItem('authToken');
-const today = new Date().toISOString().split('T')[0];
+const getLocalDate = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 
-export default function OpenTicketModal({ user, onClose, onSubmit }) {
+const PRIORITY_OPTIONS = [
+    { value: 'Normal', label: 'ปกติ', hint: 'รอได้ตามคิว', Icon: Clock, active: 'border-slate-600 bg-slate-600 text-white', idle: 'text-slate-700 hover:border-slate-400' },
+    { value: 'Medium', label: 'ปานกลาง', hint: 'ควรทำภายในวันนี้', Icon: Zap, active: 'border-amber-500 bg-amber-500 text-white', idle: 'text-amber-800 hover:border-amber-400' },
+    { value: 'High', label: 'ด่วน', hint: 'กระทบการทำงานบางส่วน', Icon: Flame, active: 'border-orange-500 bg-orange-500 text-white', idle: 'text-orange-800 hover:border-orange-400' },
+    { value: 'Critical', label: 'วิกฤต', hint: 'งานหยุดชะงัก', Icon: AlertTriangle, active: 'border-rose-600 bg-rose-600 text-white', idle: 'text-rose-800 hover:border-rose-400' },
+];
+
+export default function OpenTicketModal({ user, onClose, onSubmit, isSubmittingTicket }) {
     const [masterData, setMasterData] = useState(null);
     const [loadingMaster, setLoadingMaster] = useState(true);
     const [attachments, setAttachments] = useState([]);
-    
-    // หมายเหตุ: ปรับให้ปลอดภัยจากการเกิด ReferenceError (เนื่องจาก selectedType ยังไม่ถูกประกาศในจังหวะเริ่มต้น)
+    const [isDragActive, setIsDragActive] = useState(false);
+    const [attachmentMessage, setAttachmentMessage] = useState('');
+    const [previewUrls, setPreviewUrls] = useState({});
+
     const [formData, setFormData] = useState({
         problemTypeId: '',
         problemSubtypeId: '',
@@ -19,7 +34,7 @@ export default function OpenTicketModal({ user, onClose, onSubmit }) {
         subLocationId: '',
         deviceTypeId: '',
         projectName: '',
-        targetDate: today,
+        targetDate: getLocalDate(),
         deviceCount: 1,
         priority: 'Normal',
         requirements: '',
@@ -32,6 +47,10 @@ export default function OpenTicketModal({ user, onClose, onSubmit }) {
     // Derived filtered lists
     const subtypes = masterData?.problemSubtypes.filter(s => s.type_id === parseInt(formData.problemTypeId)) || [];
     const subLocations = masterData?.subLocations.filter(s => s.location_id === parseInt(formData.locationId)) || [];
+
+    // Progress: required fields filled
+    const requiredTotal = 3;
+    const requiredFilled = [formData.problemTypeId, formData.projectName.trim(), formData.locationId].filter(Boolean).length;
 
     useEffect(() => {
         const fetchMaster = async () => {
@@ -47,6 +66,16 @@ export default function OpenTicketModal({ user, onClose, onSubmit }) {
         fetchMaster();
     }, []);
 
+    // Image previews for attachments (revoked when the list changes)
+    useEffect(() => {
+        const next = {};
+        attachments.forEach((f, i) => {
+            if (f.type?.startsWith('image/')) next[i] = URL.createObjectURL(f);
+        });
+        setPreviewUrls(next);
+        return () => Object.values(next).forEach(url => URL.revokeObjectURL(url));
+    }, [attachments]);
+
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => {
@@ -56,6 +85,58 @@ export default function OpenTicketModal({ user, onClose, onSubmit }) {
             if (name === 'locationId') next.subLocationId = '';
             return next;
         });
+    };
+
+    const addAttachments = (fileList) => {
+        const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.svg'];
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/svg+xml', 'application/pdf'];
+        let unsupportedCount = 0;
+        let oversizedCount = 0;
+        const acceptedFiles = [];
+
+        Array.from(fileList || []).forEach((file, index) => {
+            const fileName = file.name?.toLowerCase() || '';
+            const isSupported = allowedTypes.includes(file.type) || allowedExtensions.some(extension => fileName.endsWith(extension));
+            if (!isSupported) {
+                unsupportedCount += 1;
+                return;
+            }
+            if (file.size > 5 * 1024 * 1024) {
+                oversizedCount += 1;
+                return;
+            }
+
+            const extension = file.type === 'image/jpeg' ? 'jpg' : file.type.split('/')[1] || 'png';
+            acceptedFiles.push(file.name ? file : new File([file], `pasted-image-${Date.now()}-${index + 1}.${extension}`, { type: file.type }));
+        });
+
+        setAttachments(previous => {
+            const existing = new Set(previous.map(file => `${file.name}:${file.size}:${file.lastModified}`));
+            return [...previous, ...acceptedFiles.filter(file => {
+                const key = `${file.name}:${file.size}:${file.lastModified}`;
+                if (existing.has(key)) return false;
+                existing.add(key);
+                return true;
+            })];
+        });
+
+        const messages = [];
+        if (unsupportedCount) messages.push(`ไม่รองรับไฟล์ ${unsupportedCount} รายการ`);
+        if (oversizedCount) messages.push(`ไฟล์เกิน 5MB จำนวน ${oversizedCount} รายการ`);
+        setAttachmentMessage(messages.join(' · '));
+    };
+
+    const handlePasteAttachments = (e) => {
+        const target = e.target instanceof HTMLElement ? e.target : null;
+        if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
+        const items = Array.from(e.clipboardData.items || []).filter(item => item.kind === 'file');
+        const files = items.map(item => item.getAsFile()).filter(Boolean);
+        if (files.length) {
+            e.preventDefault();
+            addAttachments(files);
+        } else if (target?.closest('[data-attachment-dropzone]')) {
+            e.preventDefault();
+        }
     };
 
     const handleSubmit = async (e) => {
@@ -96,7 +177,7 @@ export default function OpenTicketModal({ user, onClose, onSubmit }) {
             device_count: parseInt(formData.deviceCount, 10) || 1,
             location: [selectedLoc?.name, selectedSubLoc?.name].filter(Boolean).join(' › '),
             priority: formData.priority,
-            target_date: formData.targetDate || new Date().toISOString().split('T')[0],
+            target_date: formData.targetDate || getLocalDate(),
             notes: formData.requirements,
             attachments: uploadedFiles,
             phone_internal: formData.phone_internal,
@@ -106,252 +187,294 @@ export default function OpenTicketModal({ user, onClose, onSubmit }) {
         onSubmit(payload);
     };
 
-    // ฟังก์ชันจัดการสีของ Priority แบบไดนามิก
-    const getPriorityStyle = (level, isSelected) => {
-        if (!isSelected) return 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300';
-        switch(level) {
-            case 'Normal': return 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/20';
-            case 'Medium': return 'bg-amber-500 border-amber-500 text-white shadow-md shadow-amber-500/20';
-            case 'High': return 'bg-orange-500 border-orange-500 text-white shadow-md shadow-orange-500/20';
-            case 'Critical': return 'bg-rose-500 border-rose-500 text-white shadow-md shadow-rose-500/20';
-            default: return 'bg-slate-900 border-slate-900 text-white';
-        }
-    };
-
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-500">
-            <div className="bg-white rounded-[2rem] w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in fade-in zoom-in-[0.98] slide-in-from-bottom-4 duration-700 ease-out border border-white/50">
+        <div onPaste={handlePasteAttachments} className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 md:p-6 bg-black/40 backdrop-blur-sm animate-fade">
+            <div role="dialog" aria-modal="true" aria-labelledby="open-ticket-title" className="bg-surface w-full h-[100dvh] sm:h-auto sm:max-w-3xl sm:rounded-lg shadow-lift overflow-hidden flex flex-col sm:max-h-[92vh] animate-modal-pop border border-line">
 
-                {/* Header (Sticky) */}
-                <div className="px-6 py-5 border-b border-slate-100 bg-white/80 backdrop-blur-md sticky top-0 z-20">
-                    <div className="flex items-center justify-between mb-5">
-                        <div className="flex items-center gap-3">
-                            <div className="w-12 h-14 rounded-xl bg-indigo-50 flex items-center justify-center">
-                                <span className="text-xl">🎫</span>
-                            </div>
-                            <div>
-                                <h2 className="text-xl font-bold text-slate-900 tracking-tight">New Ticket</h2>
-                                <p className="text-xs text-slate-500 font-medium mt-0.5">กรอกรายละเอียดเพื่อให้ IT ดำเนินการได้รวดเร็ว</p>
-                            </div>
+                {/* Header */}
+                <div className="flex items-start justify-between gap-4 px-5 sm:px-7 pt-5 pb-4 border-b border-line bg-surface shrink-0">
+                    <div className="flex items-start gap-3 min-w-0">
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+                            <Send className="w-5 h-5" />
+                        </span>
+                        <div className="min-w-0">
+                            <h2 id="open-ticket-title" className="font-display text-xl font-bold text-ink tracking-tight">แจ้งปัญหาใหม่</h2>
+                            <p className="text-sm text-muted mt-0.5">กรอกรายละเอียดให้ครบ ทีม IT จะได้ดำเนินการได้เร็วขึ้น</p>
                         </div>
-                        <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-700 transition-colors bg-slate-50 hover:bg-slate-100 p-2.5 rounded-full">
-                            <X className="w-5 h-5" />
-                        </button>
                     </div>
+                    <button type="button" onClick={onClose} aria-label="ปิดหน้าต่าง" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-paper hover:text-ink">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
 
-                    {/* User Info Micro-Cards */}
-                    <div className="grid grid-cols-3 gap-3">
-                        <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-3.5 transition-colors hover:bg-slate-50">
-                            <p className="text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1">Requester</p>
-                            <p className="text-sm font-bold text-slate-800 truncate">{user?.name || 'Unknown'}</p>
-                            <p className="text-[11px] font-medium text-slate-500 truncate mt-0.5">{user?.email || 'No email'}</p>
-                        </div>
-                        <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-3.5 transition-colors hover:bg-slate-50">
-                            <p className="text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1">Department</p>
-                            <p className="text-sm font-bold text-slate-800 truncate">{user?.sect_long || user?.sect || '-'}</p>
-                            <p className="text-[11px] font-medium text-slate-500 mt-0.5">CC: <span className="text-indigo-600 font-bold">{user?.cost_center || 'N/A'}</span></p>
-                        </div>
-                        <div className="rounded-2xl border border-slate-100 bg-slate-50/50 p-2 flex items-center justify-center">
+                {/* Requester strip */}
+                <div className="px-5 sm:px-7 pt-5 shrink-0">
+                    <div className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-lg border border-line bg-paper p-3.5">
+                        <div className="flex items-center gap-3 min-w-0">
                             {user?.empPic ? (
-                                <img src={user.empPic} alt={user?.name} className="h-18 w-20 rounded-xl object-cover ring-2 ring-white shadow-sm" />
+                                <img src={user.empPic} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover border border-line bg-surface" />
                             ) : (
-                                <div className="h-14 w-14 rounded-xl bg-gradient-to-tr from-indigo-100 to-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-xl ring-2 ring-white shadow-sm">
+                                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-surface border border-line font-bold text-ink-soft">
                                     {user?.name?.charAt(0) || 'U'}
                                 </div>
                             )}
+                            <div className="min-w-0">
+                                <p className="text-[11px] font-semibold text-muted">ผู้แจ้ง</p>
+                                <p className="text-sm font-bold text-ink truncate">{user?.name || 'ไม่ทราบชื่อ'}</p>
+                            </div>
                         </div>
+                        <div className="min-w-0 flex-1 basis-40">
+                            <p className="text-[11px] font-semibold text-muted">แผนก</p>
+                            <p className="text-sm font-semibold text-ink-soft truncate">{user?.sect_long || user?.sect || '-'}</p>
+                        </div>
+                        <div className="min-w-0 flex-1 basis-40">
+                            <p className="text-[11px] font-semibold text-muted">อีเมล</p>
+                            <p className="text-sm font-semibold text-ink-soft truncate">{user?.email || 'ไม่มีอีเมล'}</p>
+                        </div>
+                    </div>
+
+                    {/* Progress */}
+                    <div className="mt-4 flex items-center gap-3">
+                        <div className="flex-1 h-1.5 rounded-full bg-line overflow-hidden" aria-hidden="true">
+                            <div className="h-full rounded-full bg-ink transition-all duration-500" style={{ width: `${(requiredFilled / requiredTotal) * 100}%` }} />
+                        </div>
+                        <p className="text-xs font-semibold text-muted whitespace-nowrap">
+                            {requiredFilled === requiredTotal ? (
+                                <span className="inline-flex items-center gap-1 text-teal-700"><CheckCircle2 className="w-3.5 h-3.5" /> กรอกครบแล้ว</span>
+                            ) : (
+                                <>กรอกแล้ว {requiredFilled}/{requiredTotal} ช่องจำเป็น</>
+                            )}
+                        </p>
                     </div>
                 </div>
 
                 {loadingMaster ? (
-                    <div className="flex-1 flex flex-col items-center justify-center py-20 gap-3 text-slate-400">
-                        <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                    <div className="flex-1 flex flex-col items-center justify-center py-20 gap-3 text-muted">
+                        <Loader2 className="w-6 h-6 animate-spin text-ink" />
                         <span className="text-sm font-medium">กำลังเตรียมข้อมูล...</span>
                     </div>
                 ) : (
-                    <form onSubmit={handleSubmit} className="overflow-y-auto flex-1 custom-scrollbar">
-                        <div className="p-6 space-y-8">
-                            
+                    <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar px-5 sm:px-7 py-5 space-y-5">
+
                             {/* Section 1 */}
-                            <div className="space-y-4">
-                                <SectionHeader num="1" label="ประเภทปัญหา" />
-                                
-                                <div className="grid grid-cols-2 gap-4">
-                                    <SelectWrapper label="ประเภทปัญหาหลัก" required>
-                                        <select name="problemTypeId" value={formData.problemTypeId} onChange={handleChange} required className={selectCls}>
-                                            <option value="">-- เลือกประเภท --</option>
+                            <Section num="1" title="ปัญหาที่พบ">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <Field id="problemTypeId" label="ประเภทปัญหาหลัก" required>
+                                        <Select id="problemTypeId" name="problemTypeId" value={formData.problemTypeId} onChange={handleChange} required>
+                                            <option value="">เลือกประเภทปัญหา</option>
                                             {masterData?.problemTypes.map(t => (
                                                 <option key={t.id} value={t.id}>{t.icon} {t.name}</option>
                                             ))}
-                                        </select>
-                                    </SelectWrapper>
-                                    
-                                    <SelectWrapper label="ประเภทย่อย">
-                                        <select name="problemSubtypeId" value={formData.problemSubtypeId} onChange={handleChange} disabled={!formData.problemTypeId || subtypes.length === 0} className={selectCls}>
-                                            <option value="">-- เลือกประเภทย่อย --</option>
+                                        </Select>
+                                    </Field>
+                                    <Field id="problemSubtypeId" label="ประเภทย่อย">
+                                        <Select id="problemSubtypeId" name="problemSubtypeId" value={formData.problemSubtypeId} onChange={handleChange} disabled={!formData.problemTypeId || subtypes.length === 0}>
+                                            <option value="">เลือกประเภทย่อย</option>
                                             {subtypes.map(s => (
                                                 <option key={s.id} value={s.id}>{s.name}</option>
                                             ))}
-                                        </select>
-                                    </SelectWrapper>
+                                        </Select>
+                                    </Field>
                                 </div>
 
-                                <div>
-                                    <Label>หัวข้อ / รายละเอียดปัญหา <Req /></Label>
+                                <Field id="projectName" label="หัวข้อปัญหา" required hint="สรุปสั้น ๆ เช่น คอมเปิดไม่ติด, พิมพ์เอกสารไม่ได้">
                                     <input
-                                        name="projectName" value={formData.projectName} onChange={handleChange} required
-                                        placeholder="เช่น คอมพิวเตอร์เปิดไม่ติด, ปริ้นเตอร์ไม่ทำงาน"
+                                        id="projectName" name="projectName" value={formData.projectName} onChange={handleChange} required
+                                        placeholder="เช่น คอมพิวเตอร์เปิดไม่ติด"
                                         className={inputCls}
                                     />
-                                </div>
-                            </div>
+                                </Field>
+                            </Section>
 
                             {/* Section 2 */}
-                            <div className="space-y-4 pt-2">
-                                <SectionHeader num="2" label="สถานที่และอุปกรณ์" />
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <SelectWrapper label="Location" required>
-                                        <select name="locationId" value={formData.locationId} onChange={handleChange} required className={selectCls}>
-                                            <option value="">-- เลือก Location --</option>
+                            <Section num="2" title="สถานที่และอุปกรณ์">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <Field id="locationId" label="สถานที่หลัก" required>
+                                        <Select id="locationId" name="locationId" value={formData.locationId} onChange={handleChange} required>
+                                            <option value="">เลือกสถานที่</option>
                                             {masterData?.locations.map(l => (
                                                 <option key={l.id} value={l.id}>{l.name}</option>
                                             ))}
-                                        </select>
-                                    </SelectWrapper>
-                                    
-                                    <SelectWrapper label="Sub-Location">
-                                        <select name="subLocationId" value={formData.subLocationId} onChange={handleChange} disabled={!formData.locationId || subLocations.length === 0} className={selectCls}>
-                                            <option value="">-- เลือก Sub-Location --</option>
+                                        </Select>
+                                    </Field>
+                                    <Field id="subLocationId" label="สถานที่ย่อย">
+                                        <Select id="subLocationId" name="subLocationId" value={formData.subLocationId} onChange={handleChange} disabled={!formData.locationId || subLocations.length === 0}>
+                                            <option value="">เลือกสถานที่ย่อย</option>
                                             {subLocations.map(s => (
                                                 <option key={s.id} value={s.id}>{s.name}</option>
                                             ))}
-                                        </select>
-                                    </SelectWrapper>
+                                        </Select>
+                                    </Field>
                                 </div>
 
-                                <div className="grid grid-cols-3 gap-4">
-                                    <div className="col-span-2">
-                                        <SelectWrapper label="ประเภท Device">
-                                            <select name="deviceTypeId" value={formData.deviceTypeId} onChange={handleChange} className={selectCls}>
-                                                <option value="">-- เลือกประเภท --</option>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div className="sm:col-span-2">
+                                        <Field id="deviceTypeId" label="ประเภทอุปกรณ์">
+                                            <Select id="deviceTypeId" name="deviceTypeId" value={formData.deviceTypeId} onChange={handleChange}>
+                                                <option value="">เลือกประเภทอุปกรณ์</option>
                                                 {masterData?.deviceTypes.map(d => (
                                                     <option key={d.id} value={d.id}>{d.icon} {d.name}</option>
                                                 ))}
-                                            </select>
-                                        </SelectWrapper>
+                                            </Select>
+                                        </Field>
                                     </div>
-                                    <div>
-                                        <Label>จำนวน</Label>
-                                        <input type="number" name="deviceCount" value={formData.deviceCount} onChange={handleChange} min="1" className={inputCls} />
-                                    </div>
+                                    <Field id="deviceCount" label="จำนวน">
+                                        <input id="deviceCount" type="number" name="deviceCount" value={formData.deviceCount} onChange={handleChange} min="1" className={inputCls} />
+                                    </Field>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <Label>เบอร์ภายใน</Label>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <Field id="phone_internal" label="เบอร์ภายใน">
                                         <input
-                                            name="phone_internal" value={formData.phone_internal} onChange={handleChange}
+                                            id="phone_internal" name="phone_internal" value={formData.phone_internal} onChange={handleChange}
                                             placeholder="เช่น 1234" className={inputCls}
                                         />
-                                    </div>
-                                    <div>
-                                        <Label>เบอร์ส่วนตัว</Label>
+                                    </Field>
+                                    <Field id="phone_personal" label="เบอร์มือถือ" optional>
                                         <input
-                                            name="phone_personal" value={formData.phone_personal} onChange={handleChange}
-                                            placeholder="เช่น 08x-xxx-xxxx" className={inputCls}
+                                            id="phone_personal" name="phone_personal" value={formData.phone_personal} onChange={handleChange}
+                                            placeholder="เช่น 081-xxx-xxxx" className={inputCls}
                                         />
-                                    </div>
+                                    </Field>
                                 </div>
-                            </div>
+                            </Section>
 
                             {/* Section 3 */}
-                            <div className="space-y-4 pt-2">
-                                <SectionHeader num="3" label="ความเร่งด่วนและกำหนดเวลา" />
-                                
-                                <div className="grid grid-cols-2 gap-6">
-                                    <div>
-                                        <Label>ระดับความเร่งด่วน</Label>
-                                        <div className="flex gap-2 mt-2">
-                                            {['Normal', 'Medium', 'High', 'Critical'].map(level => {
-                                                const isSelected = formData.priority === level;
-                                                return (
-                                                    <label key={level} className={`flex-1 cursor-pointer text-center px-2 py-2.5 border rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all duration-300 ${getPriorityStyle(level, isSelected)}`}>
-                                                        <input type="radio" name="priority" value={level} checked={isSelected} onChange={handleChange} className="hidden" />
-                                                        {level}
-                                                    </label>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <Label>วันที่ต้องการเสร็จ</Label>
-                                        <input
-                                            type="date"
-                                            name="targetDate"
-                                            value={formData.targetDate}
-                                            onChange={handleChange}
-                                            className={inputCls}
-                                        />
-                                        <p className="mt-2 text-[11px] font-medium text-slate-500">ค่าเริ่มต้นจะเป็นวันที่ปัจจุบัน และคุณสามารถเปลี่ยนได้หากไม่รีบ</p>
+                            <Section num="3" title="ความเร่งด่วนและกำหนดเวลา">
+                                <div>
+                                    <p className="mb-2 text-xs font-semibold text-ink-soft">ระดับความเร่งด่วน</p>
+                                    <div role="radiogroup" aria-label="ระดับความเร่งด่วน" className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+                                        {PRIORITY_OPTIONS.map(({ value, label, hint, Icon, active, idle }) => {
+                                            const isSelected = formData.priority === value;
+                                            return (
+                                                <label
+                                                    key={value}
+                                                    className={`lift cursor-pointer rounded-lg border-2 p-3 transition-colors focus-within:ring-4 focus-within:ring-ink/10 ${isSelected ? active : `bg-surface border-line ${idle}`}`}
+                                                >
+                                                    <input type="radio" name="priority" value={value} checked={isSelected} onChange={handleChange} className="sr-only" />
+                                                    <span className="flex items-center gap-2 text-sm font-bold">
+                                                        <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+                                                        {label}
+                                                    </span>
+                                                    <span className={`mt-1 block text-[11px] leading-snug ${isSelected ? 'text-white/85' : 'text-muted'}`}>{hint}</span>
+                                                </label>
+                                            );
+                                        })}
                                     </div>
                                 </div>
-                            </div>
 
-                            {/* Notes & Attachments */}
-                            <div className="space-y-4 pt-2">
-                                <div>
-                                    <Label>รายละเอียดเพิ่มเติม</Label>
-                                    <textarea rows="3" name="requirements" value={formData.requirements} onChange={handleChange}
+                                <Field id="targetDate" label="วันที่ต้องการให้เสร็จ" hint="ค่าเริ่มต้นคือวันนี้ เปลี่ยนได้หากไม่เร่งด่วน">
+                                    <input id="targetDate" type="date" name="targetDate" value={formData.targetDate} onChange={handleChange} className={`${inputCls} sm:max-w-xs`} />
+                                </Field>
+                            </Section>
+
+                            {/* Section 4 */}
+                            <Section num="4" title="รายละเอียดเพิ่มเติมและไฟล์แนบ">
+                                <Field id="requirements" label="รายละเอียดเพิ่มเติม" optional>
+                                    <textarea id="requirements" rows="3" name="requirements" value={formData.requirements} onChange={handleChange}
                                         className={`${inputCls} resize-none`}
-                                        placeholder="ระบุซอฟต์แวร์ที่ต้องการ หรืออธิบายข้อมูลเพิ่มเติม..." />
-                                </div>
+                                        placeholder="เช่น ข้อความที่ขึ้นบนจอ, โปรแกรมที่ใช้, เวลาที่เกิดปัญหา" />
+                                </Field>
 
                                 <div>
-                                    <Label>แนบไฟล์ (ไม่บังคับ)</Label>
+                                    <p className="mb-1.5 text-xs font-semibold text-ink-soft">ไฟล์แนบ <span className="font-normal text-muted">(ไม่บังคับ)</span></p>
                                     <div
-                                        className="border-2 border-dashed border-slate-200 rounded-2xl p-6 bg-slate-50/50 hover:bg-slate-50 hover:border-indigo-300 cursor-pointer transition-all duration-300 group"
-                                        onClick={() => document.getElementById('file-input').click()}
+                                        data-attachment-dropzone="true"
+                                        onDragOver={(e) => e.preventDefault()}
+                                        onDragEnter={(e) => { e.preventDefault(); setIsDragActive(true); }}
+                                        onDragLeave={() => setIsDragActive(false)}
+                                        onDrop={(e) => {
+                                            e.preventDefault();
+                                            setIsDragActive(false);
+                                            addAttachments(e.dataTransfer.files);
+                                        }}
+                                        className={`rounded-lg border-2 border-dashed p-5 text-center transition-colors ${isDragActive ? 'border-ink bg-ink/5' : 'border-line bg-paper'}`}
                                     >
                                         <input
-                                            id="file-input" type="file" multiple accept=".jpg,.jpeg,.png,.gif,.pdf,.svg" className="hidden"
+                                            id="file-input" type="file" multiple accept=".jpg,.jpeg,.png,.gif,.pdf,.svg" className="sr-only"
                                             onChange={(e) => {
-                                                const files = Array.from(e.target.files);
-                                                setAttachments(files);
+                                                addAttachments(e.target.files);
+                                                e.target.value = '';
                                             }}
                                         />
-                                        <div className="flex flex-col items-center text-slate-400 group-hover:text-indigo-500 transition-colors">
-                                            <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm mb-2 group-hover:scale-110 transition-transform">
-                                                <Paperclip className="w-5 h-5" />
-                                            </div>
-                                            <p className="text-sm font-semibold text-slate-600">คลิกเพื่อแนบไฟล์</p>
-                                            <p className="text-[11px] mt-1 font-medium">รองรับ JPG, PNG, PDF (สูงสุด 5MB)</p>
-                                        </div>
-                                        
+                                        <span className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-surface border border-line text-ink-soft">
+                                            <Upload className="w-5 h-5" />
+                                        </span>
+                                        <p className="text-sm font-semibold text-ink">ลากไฟล์มาวางที่นี่ หรือ</p>
+                                        <button
+                                            type="button"
+                                            onClick={() => document.getElementById('file-input').click()}
+                                            className="mt-2 inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-line bg-surface px-4 py-2 text-xs font-bold text-ink transition-colors hover:bg-paper focus-visible:ring-4 focus-visible:ring-ink/10 focus-visible:outline-none"
+                                        >
+                                            <Paperclip className="w-3.5 h-3.5" /> เลือกไฟล์
+                                        </button>
+                                        <p className="mt-3 text-[11px] text-muted">
+                                            รองรับ JPG, PNG, GIF, SVG, PDF ขนาดไม่เกิน 5MB ต่อไฟล์ · วางรูปด้วย <kbd className="rounded border border-line bg-surface px-1 py-0.5 font-mono">Ctrl</kbd> + <kbd className="rounded border border-line bg-surface px-1 py-0.5 font-mono">V</kbd> ได้เลย
+                                        </p>
+
+                                        {attachmentMessage && (
+                                            <p role="alert" className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700">
+                                                <Info className="w-3.5 h-3.5" /> {attachmentMessage}
+                                            </p>
+                                        )}
+
                                         {attachments.length > 0 && (
-                                            <div className="mt-4 space-y-2 w-full max-w-md mx-auto">
+                                            <ul className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
                                                 {attachments.map((f, i) => (
-                                                    <div key={i} className="flex items-center gap-3 text-xs text-slate-600 bg-white px-4 py-2.5 rounded-xl border border-slate-100 shadow-sm" onClick={(e) => e.stopPropagation()}>
-                                                        <Paperclip className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
-                                                        <span className="flex-1 truncate font-medium">{f.name}</span>
-                                                        <span className="text-slate-400 font-medium">{(f.size / 1024).toFixed(0)} KB</span>
-                                                    </div>
+                                                    <li key={`${f.name}-${f.size}-${i}`} className="flex items-center gap-3 rounded-lg border border-line bg-surface p-2">
+                                                        {previewUrls[i] ? (
+                                                            <img src={previewUrls[i]} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover border border-line" />
+                                                        ) : (
+                                                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-paper border border-line text-muted">
+                                                                {f.type?.startsWith('image/') ? <ImageIcon className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                                                            </span>
+                                                        )}
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="truncate text-xs font-semibold text-ink">{f.name}</p>
+                                                            <p className="text-[11px] text-muted">{(f.size / 1024).toFixed(0)} KB</p>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            aria-label={`ลบไฟล์ ${f.name}`}
+                                                            onClick={() => setAttachments(previous => previous.filter((_, index) => index !== i))}
+                                                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-rose-50 hover:text-rose-600"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </li>
                                                 ))}
-                                            </div>
+                                            </ul>
                                         )}
                                     </div>
                                 </div>
-                            </div>
+                            </Section>
                         </div>
 
-                        {/* Actions (Sticky Bottom) */}
-                        <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100 sticky bottom-0 bg-white/80 backdrop-blur-md">
-                            <button type="button" onClick={onClose} className="px-6 py-2.5 rounded-xl font-bold text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all">
-                                ยกเลิก
-                            </button>
-                            <button type="submit" className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-all duration-300 shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/40 active:scale-95 flex items-center gap-2">
-                                <span>Submit Ticket</span>
-                            </button>
+                        {/* Footer */}
+                        <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 px-5 sm:px-7 py-4 border-t border-line bg-paper shrink-0">
+                            <p className="text-[11px] text-muted"><span className="text-rose-600">*</span> จำเป็นต้องกรอก</p>
+                            <div className="flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    disabled={isSubmittingTicket}
+                                    className="flex-1 sm:flex-none min-h-[44px] rounded-lg border border-line bg-surface px-5 text-sm font-bold text-ink-soft transition-colors hover:bg-paper disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    ยกเลิก
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSubmittingTicket}
+                                    className="lift flex-1 sm:flex-none min-h-[44px] inline-flex items-center justify-center gap-2 rounded-lg bg-ink px-6 text-sm font-bold text-white shadow-soft transition-colors hover:bg-ink-soft disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                    {isSubmittingTicket ? (
+                                        <><Loader2 className="w-4 h-4 animate-spin" /> กำลังส่ง...</>
+                                    ) : (
+                                        <><Send className="w-4 h-4" /> ส่งแจ้งซ่อม</>
+                                    )}
+                                </button>
+                            </div>
                         </div>
                     </form>
                 )}
@@ -360,32 +483,36 @@ export default function OpenTicketModal({ user, onClose, onSubmit }) {
     );
 }
 
-// UI Components & Styles
-const inputCls = "w-full bg-slate-50/50 border border-slate-200 rounded-xl p-3 text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all duration-300";
-const selectCls = `${inputCls} appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-100 pr-10`;
+// ---- UI building blocks ----
+const inputCls = "w-full rounded-lg border border-line bg-surface px-3.5 py-2.5 text-sm font-medium text-ink placeholder:text-muted/80 focus:border-ink focus:outline-none focus:ring-4 focus:ring-ink/10 transition-all disabled:bg-paper disabled:text-muted";
 
-const Label = ({ children }) => <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">{children}</label>;
-const Req = () => <span className="text-rose-500 ml-0.5">*</span>;
+const Section = ({ num, title, children }) => (
+    <section className="rounded-lg border border-line bg-surface p-5 space-y-4">
+        <header className="flex items-center gap-3">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-ink text-xs font-bold text-white">{num}</span>
+            <h3 className="font-display text-base font-semibold text-ink">{title}</h3>
+        </header>
+        {children}
+    </section>
+);
 
-const SectionHeader = ({ num, label }) => (
-    <div className="flex items-center gap-3 mb-2">
-        <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-black">
-            {num}
-        </div>
-        <h3 className="text-sm font-bold text-slate-800">{label}</h3>
-        <div className="flex-1 h-px bg-slate-100 ml-2"></div>
+const Field = ({ id, label, required, optional, hint, children }) => (
+    <div className="min-w-0">
+        <label htmlFor={id} className="mb-1.5 block text-xs font-semibold text-ink-soft">
+            {label}
+            {required && <span className="ml-0.5 text-rose-600" aria-hidden="true">*</span>}
+            {optional && <span className="ml-1 font-normal text-muted">(ไม่บังคับ)</span>}
+        </label>
+        {children}
+        {hint && <p className="mt-1.5 text-[11px] text-muted">{hint}</p>}
     </div>
 );
 
-// Wrapper สำหรับ Select เพื่อใส่ไอคอนลูกศรที่สวยกว่าค่า Default
-const SelectWrapper = ({ label, required, children }) => (
-    <div>
-        <Label>{label} {required && <Req />}</Label>
-        <div className="relative">
+const Select = ({ id, children, disabled, ...props }) => (
+    <div className="relative">
+        <select id={id} disabled={disabled} className={`${inputCls} appearance-none cursor-pointer pr-10`} {...props}>
             {children}
-            <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-400">
-                <ChevronDown className="w-4 h-4" />
-            </div>
-        </div>
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden="true" />
     </div>
 );

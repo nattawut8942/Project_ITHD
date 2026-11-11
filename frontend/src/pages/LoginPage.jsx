@@ -1,33 +1,22 @@
-// frontend/src/pages/LoginPage.jsx (UPDATED VERSION)
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Package, AlertTriangle, User, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { AlertCircle, Eye, EyeOff, Loader2, MonitorPlay } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE } from '../config/api';
+import logo from '../../public/DAIKIN_logo.svg.png';
 
+const inputClass =
+    'mt-2 block w-full min-h-[44px] rounded-lg border border-line bg-surface px-3.5 py-2.5 text-base text-ink placeholder:text-muted focus:border-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600';
 
 const LoginPage = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [username, setUsername] = useState('');
-    const [empPicUrl, setEmpPicUrl] = useState(null);
-    const { setAuthToken } = useAuth(); // ✅ U
-    // se updated function
-
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            const trimmed = username.trim();
-            if (trimmed) {
-                setEmpPicUrl(`http://dcidmc.dci.daikin.co.jp/PICTURE/${trimmed}.jpg`);
-            } else {
-                setEmpPicUrl(null);
-            }
-        }, 300);
-        return () => clearTimeout(timer);
-    }, [username]);
+    const { setAuthToken } = useAuth();
 
     const navigate = useNavigate();
+    const location = useLocation();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -44,16 +33,14 @@ const LoginPage = () => {
             const data = await res.json();
 
             if (data.success) {
-                // ✅ Store both token and user data in context AND localStorage
                 setAuthToken(data.token, data.user);
-
-                // Redirect to dashboard
-                navigate('/');
+                const from = location.state?.from || '/';
+                navigate(from, { replace: true });
             } else {
-                setError(data.message || 'Login failed');
+                setError(data.message || 'เข้าสู่ระบบไม่สำเร็จ ลองใหม่อีกครั้ง');
             }
         } catch (err) {
-            setError('Server error');
+            setError('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบการเชื่อมต่อแล้วลองใหม่');
             console.error('Login error:', err);
         } finally {
             setLoading(false);
@@ -61,128 +48,110 @@ const LoginPage = () => {
     };
 
     return (
-        <div className="flex h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-50/50 font-sans text-slate-800 relative overflow-hidden p-4">
-            {/* Background Pattern Effects */}
-            <div className="absolute inset-0 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:24px_24px] opacity-60 z-0 pointer-events-none"></div>
-            <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-200/20 rounded-full blur-3xl z-0"></div>
+        <div className="flex min-h-screen flex-col bg-paper font-body text-ink-soft">
+            <main className="flex flex-1 items-center justify-center px-5 py-12">
+                <div className="dash-rise w-full max-w-md rounded-lg border border-line bg-surface p-7 shadow-lift sm:p-10">
+                    <div className="flex flex-col items-center text-center">
+                        <img
+                            src={logo}
+                            alt="DAIKIN"
+                            className="h-14 w-auto object-contain"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                        />
 
-            <div className="z-10 w-full max-w-md p-8 sm:p-10 bg-white border border-slate-100 rounded-3xl shadow-xl shadow-slate-200/50 backdrop-blur-sm">
-                <div className="text-center mb-6">
-    <img
-        src="/DAIKIN_logo.svg.png"
-        alt="DAIKIN Logo"
-        className="h-12 mx-auto mb-4 object-contain" // ปรับลด mb-5 เป็น mb-4 ให้พอดี
-    />
-    
-    {/* Fixed height container to prevent layout shift while typing
-    <div className="h-20 flex items-center justify-center mb-4">
-        {empPicUrl ? (
-            <img
-                src={empPicUrl}
-                alt="Employee"
-                className="h-20 w-20 rounded-full mx-auto object-cover border border-slate-100 animate-in fade-in zoom-in duration-300"
-                onError={() => setEmpPicUrl(null)}
-            />
-        ) : (
-            <div className="h-20 w-20 rounded-full mx-auto bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-300 shadow-inner">
-                <User size={32} />
-            </div>
-        )}
-    </div> */}
+                        <h1 className="mt-8 font-display text-4xl font-bold leading-tight text-ink">IT Help Desk</h1>
+                        <p className="mt-2 text-base text-muted">แจ้งปัญหาและติดตามงานบริการ IT ได้ในที่เดียว</p>
+                    </div>
 
-    <h2 className="text-3xl font-black tracking-tight text-slate-950 leading-none">IT HELP
-        <span className="text-red-800">|</span>
-        <span className="text-indigo-600">DESK</span></h2>
-    <p className="text-lg font-bold text-indigo-600 mt-2 tracking-wide">SERVICE PORTAL</p>
-</div>
-
-
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    {/* Username Field */}
-                    <div className="space-y-1.5">
-                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block pl-1">USERNAME</label>
-                        <div className="relative">
-                            <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-400">
-                                <User size={18} />
-                            </span>
+                    <form onSubmit={handleSubmit} className="mt-10 space-y-6">
+                        <div>
+                            <label htmlFor="username" className="block text-sm font-medium text-ink">
+                                ชื่อผู้ใช้
+                            </label>
                             <input
+                                id="username"
                                 name="username"
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
-
-                                placeholder="Enter your username"
+                                placeholder="ชื่อผู้ใช้ของบริษัท"
                                 autoComplete="username"
                                 autoFocus
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 pl-11 pr-4 outline-none focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-50 transition-all text-sm text-slate-900 placeholder:text-slate-400"
                                 required
+                                aria-invalid={error ? true : undefined}
+                                className={inputClass}
                             />
                         </div>
-                    </div>
 
-                    {/* Password Field */}
-                    <div className="space-y-1.5">
-                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block pl-1">PASSWORD</label>
-                        <div className="relative">
-                            <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-400">
-                                <Lock size={18} />
-                            </span>
-                            <input
-                                name="password"
-                                type={showPassword ? 'text' : 'password'}
-                                placeholder="••••••••"
-                                autoComplete="current-password"
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 pl-11 pr-11 outline-none focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-50 transition-all text-sm text-slate-900 placeholder:text-slate-400"
-                                required
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowPassword(!showPassword)}
-                                className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 hover:text-slate-600 transition-colors focus:outline-none"
-                            >
-                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </button>
+                        <div>
+                            <label htmlFor="password" className="block text-sm font-medium text-ink">
+                                รหัสผ่าน
+                            </label>
+                            <div className="relative">
+                                <input
+                                    id="password"
+                                    name="password"
+                                    type={showPassword ? 'text' : 'password'}
+                                    placeholder="รหัสผ่านของบริษัท"
+                                    autoComplete="current-password"
+                                    required
+                                    aria-invalid={error ? true : undefined}
+                                    className={`${inputClass} pr-12`}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                                    aria-pressed={showPassword}
+                                    className="absolute inset-y-0 right-0 mt-2 flex w-11 items-center justify-center rounded-r-md text-muted transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:outline-none"
+                                >
+                                    {showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+                                </button>
+                            </div>
                         </div>
-                    </div>
 
-                    {error && (
-                        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-xs font-medium flex items-center gap-2">
-                            <AlertTriangle size={14} className="text-red-500 shrink-0" /> {error}
-                        </div>
-                    )}
+                        <p className="text-sm text-muted">
+                            ใช้ชื่อผู้ใช้และรหัสผ่านเดียวกับที่ใช้เข้าคอมพิวเตอร์ของบริษัท
+                        </p>
 
-                    {/* Submit Button */}
-                    <button
-                        disabled={loading}
-                        className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-indigo-200 transition-all active:scale-[0.98] disabled:opacity-50 mt-2 text-sm tracking-wide flex items-center justify-center gap-2"
-                    >
-                        {loading ? (
-                            <>
-                                <Loader2 size={16} className="animate-spin" />
-                                <span>Authenticating...</span>
-                            </>
-                        ) : (
-                            <span>LOGIN</span>
+                        {error && (
+                            <div role="alert" className="flex items-start gap-2 text-sm font-medium text-rose">
+                                <AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+                                <span>{error}</span>
+                            </div>
                         )}
-                    </button>
-                </form>
 
-                <p className="m-3 text-center text-[12px] font-medium text-slate-500 mb-6 bg-slate-50 py-2.5 px-4 rounded-xl border border-slate-100">
-                    Login ด้วย Username / Password เข้าเครื่องคอม
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="lift flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 py-2.5 text-base font-semibold text-white shadow-soft transition-colors hover:bg-ink-soft active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:outline-none disabled:opacity-60"
+                        >
+                            {loading ? (
+                                <>
+                                    <Loader2 size={18} className="animate-spin" aria-hidden="true" />
+                                    <span>กำลังตรวจสอบ...</span>
+                                </>
+                            ) : (
+                                <span>เข้าสู่ระบบ</span>
+                            )}
+                        </button>
+                    </form>
 
-                </p>
+                    <div className="mt-10 border-t border-line pt-6 text-center">
+                        <button
+                            type="button"
+                            onClick={() => navigate('/tv')}
+                            className="inline-flex min-h-[44px] items-center justify-center gap-2 text-sm font-medium text-ink-soft underline-offset-4 transition-colors hover:text-ink hover:underline focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:outline-none"
+                        >
+                            <MonitorPlay size={16} aria-hidden="true" />
+                            <span>ดูหน้า TV Monitor</span>
+                        </button>
+                    </div>
+                </div>
+            </main>
 
-                <button
-                    type="button"
-                    onClick={() => navigate('/tv')}
-                    className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3.5 rounded-xl transition-all active:scale-[0.98] mt-2 text-sm tracking-wide flex items-center justify-center gap-2"
-                >
-                    <Eye size={16} />
-                    <span>View TV Monitor</span>
-                </button>
-                <p className="mt-8 text-center text-[11px] text-slate-400 tracking-wide">
-                    © 2026 BY: NATTHAWUT.Y <span className="font-bold text-indigo-600">ALL RIGHTS RESERVED.</span>
-                </p>
-            </div>
+            <footer className="px-5 pb-6 text-center text-xs text-muted">
+                © 2026 BY: NATTHAWUT.Y · สงวนลิขสิทธิ์
+            </footer>
         </div>
     );
 };

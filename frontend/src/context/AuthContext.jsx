@@ -53,6 +53,11 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('authUser', JSON.stringify(userData));
     };
 
+    // Permission codes come from the login response (user.permissions), stored with the user.
+    // They refresh on the next login; the server re-checks every protected request anyway.
+    const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+    const can = (permission) => permissions.includes(permission);
+
     const value = {
         user,
         token,
@@ -60,7 +65,9 @@ export const AuthProvider = ({ children }) => {
         login,
         logout,
         setAuthToken,
-        isAuthenticated: !!token
+        isAuthenticated: !!token,
+        permissions,
+        can
     };
 
     return (

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+	  <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- mssql -> Microsoft.Data.SqlClient + Dapper (lightweight, keeps raw-SQL style like the Node code) -->
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <PackageReference Include="Dapper" Version="2.1.35" />
+
+    <!-- jsonwebtoken -> built-in JwtBearer -->
+	  <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="6.0.35" />
+
+    <!-- axios (call Daikin AD API) -> HttpClient is built-in, no package needed -->
+
+    <!-- socket.io -> SignalR is built-in, no package needed -->
+
+    <!-- swagger for quick API testing, optional but handy -->
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+  </ItemGroup>
+
+</Project>

@@ -9,7 +9,7 @@ import { API_BASE } from '../config/api';
 const createApiClient = () => {
     const client = axios.create({
         baseURL: API_BASE,
-        timeout: 10000
+        timeout: 15000
     });
 
     // Request interceptor - add token to headers
@@ -32,7 +32,7 @@ const createApiClient = () => {
                 // Token expired or invalid - clear auth and redirect to login
                 localStorage.removeItem('authToken');
                 localStorage.removeItem('authUser');
-                window.location.href = '/login';
+                window.location.href = 'ITHelpDeskSystem/login';
             }
             return Promise.reject(error);
         }
@@ -50,7 +50,10 @@ export default apiClient;
  */
 export const ticketAPI = {
     // Get all tickets (filtered by user if not IT Staff)
-    getTickets: () => apiClient.get('/tickets'),
+    // params: { startDate, endDate, search } — all optional. Without them
+    // the backend defaults to the last 180 days of finished tickets (plus
+    // all still-active ones); pass a wider range to look further back.
+    getTickets: (params) => apiClient.get('/tickets', { params }),
 
     // Get single ticket
     getTicket: (ticketId) => apiClient.get(`/tickets/${ticketId}`),
@@ -71,5 +74,15 @@ export const ticketAPI = {
     getTicketHistory: (ticketId) => apiClient.get(`/tickets/${ticketId}/history`),
 
     // Add comment
-    addTicketComment: (ticketId, comment) => apiClient.post(`/tickets/${ticketId}/comments`, { comment })
+    addTicketComment: (ticketId, comment) => apiClient.post(`/tickets/${ticketId}/comments`, { comment }),
+    addHelper: (ticketId, empCode) => apiClient.post(`/tickets/${ticketId}/assignees`, { empCode }),
+    removeHelper: (ticketId, empCode) => apiClient.delete(`/tickets/${ticketId}/assignees/${empCode}`),
+
+    // Search stock products (proxied through the Helpdesk backend to Stock's API - avoids CORS)
+    searchStockProducts: (search, deviceType) => apiClient.get('/stock/products', { params: { search, deviceType } }),
+    getStockDeviceTypes: () => apiClient.get('/stock/device-types'),
+};
+
+export const statAPI = {
+    getStats: () => apiClient.get('/tickets/stats'),
 };
